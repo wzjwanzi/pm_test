@@ -1,81 +1,78 @@
-# 移动设备自动化测试平台
+# PM Test Mobile Automation Platform
 
-一个功能强大的移动设备自动化测试平台，支持设备控制、网络管理、5G测试和灌包测试。
+桌面版基站与手机自动化测试平台，用于构建测试用例、执行抓包、基站 SSH 日志采集、灌包服务器 iperf/ping、手机侧 ADB 操作，并集中查看运行日志和产物。
+
+## 当前架构
+
+```text
+desktop_app.py
+  -> desktop.main.DesktopApp
+  -> desktop.controller.DesktopController
+  -> pm_tests.core.facade.PmTestRunManager
+  -> pm_tests.core.planner.build_run_plan
+  -> pm_tests.core.orchestrator.RunOrchestrator
+  -> pm_tests.core.runner.StepRunner
+  -> pm_tests.core.adapters.*
+```
+
+执行链路不依赖 Appium。手机侧操作通过 `adb` 和 Android 系统自带的 `uiautomator dump` 完成。
 
 ## 主要功能
 
-### 📱 设备管理
-- 自动检测连接的 Android/iOS 设备
-- 远程控制设备应用
-- 自动化操作（搜索、点击等）
+- 用例库：保存、复制、重命名、删除用例。
+- 模板导入：优先从 `cases/*.json` 读取已保存用例作为模板；空库时使用内置模板。
+- 运行配置：基站 Web、基站 SSH、灌包服务器、手机侧参数分组保存到 `settings.json`。
+- 执行编排：按用例步骤顺序执行，并生成 `run.json`、`execution.log`、pcap、SSH log、iperf log。
+- 设备操作：通过 ADB 执行 ping、iperf、飞行模式开关、UI dump 等手机侧操作。
 
-### 🌐 网络控制
-- 启用/禁用设备网络
-- 设置网络代理
-- 模拟各种网络环境
+## 环境要求
 
-### 📡 5G 网络测试
-- 网络类型检测（5G/4G/3G）
-- 4G/5G 网络切换
-- 信号强度监控
-- 基站信息获取
+- Windows 10/11
+- Python 3.11 或 3.12
+- ADB 可用，或使用项目内置 `adb.exe`
+- 手机开启开发者选项和 USB 调试
+- 基站 Web、基站 SSH、灌包服务器网络可达
 
-### 🚀 灌包测试（流量测试）
-- 实时流量统计
-- 持续下载/上传测试
-- Ping 测试（延迟和丢包率）
-- 网络速度测试
+不需要安装或启动 Appium。
 
-### 📊 网络监控
-- 完整网络信息
-- 多主机连通性测试
-- 网络质量评估
+## 快速启动
 
-## 快速开始
+### 使用打包版
 
-### 方式一：使用打包的 exe 文件（推荐）
-
-1. 下载 release 包
-2. 确保已安装 Appium 和 ADB
-3. 启动 Appium 服务：`appium`
-4. 双击 `start.bat` 或运行 `MobileTestPlatform.exe`
-5. 浏览器访问 `http://localhost:5000`
-
-### 方式二：从源码运行
-
-1. 安装依赖：`pip install -r requirements.txt`
-2. 启动 Appium：`appium`
-3. 启动平台：`python app.py`
-4. 访问 `http://localhost:5000`
-
-## 打包部署
-
-### Windows 打包
-```bash
-# 自动打包
-build.bat
-
-# 或快速打包
-quick_build.bat
+```bat
+start.bat
 ```
 
-### Linux/macOS 打包
-```bash
-chmod +x build.sh
-./build.sh
+或直接运行：
+
+```text
+release\MobileTestPlatform\MobileTestPlatform.exe
 ```
 
-详细说明请查看 [BUILD_GUIDE.md](BUILD_GUIDE.md)
+### 使用源码
 
-## 文档
+```bat
+python -m pip install -r requirements.txt
+python desktop_app.py
+```
 
-- [使用指南](USAGE.md) - 详细的使用说明
-- [5G测试指南](5G_TESTING_GUIDE.md) - 5G和灌包测试详细说明
-- [打包指南](BUILD_GUIDE.md) - 打包部署完整指南
+## 验证
 
-## 技术栈
+```bat
+python -m pytest
+```
 
-- Python 3.8+ / Flask
-- Appium + Selenium
-- mitmproxy + ADB
-- PyInstaller
+## 重要目录
+
+- `desktop/`：Tkinter 桌面 UI 和控制器。
+- `pm_tests/core/`：运行计划、编排、步骤执行、适配器接口。
+- `pm_tests/`：基站 Web、SSH、抓包、灌包服务器相关能力。
+- `network/`：手机侧 iperf、ping、飞行模式等 ADB 操作。
+- `device/`：ADB 设备发现和 Android UI dump 解析。
+- `cases/`：本地用例库。
+- `artifacts/`：运行产物目录，已被 Git 忽略。
+- `release/`、`build_release/`：打包输出目录，已被 Git 忽略。
+
+## 调用关系图
+
+打开 `docs/project_call_graph.html` 可以查看可拖动、可播放的调用关系动态图。
