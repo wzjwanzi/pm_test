@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>移动自动化平台调用关系动态图</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --text: #1d2733;
+      --muted: #637083;
+      --line: #c6cfda;
+      --active: #d94f2b;
+      --ui: #2e75b6;
+      --core: #6b5fb5;
+      --data: #2f8a68;
+      --adapter: #b7791f;
+      --external: #5d6673;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Microsoft YaHei UI", "Segoe UI", Arial, sans-serif;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 18px;
+      background: #173f67;
+      color: white;
+      border-bottom: 1px solid #0e2b47;
+    }
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    button, select {
+      min-height: 32px;
+      border: 1px solid #b6c1ce;
+      border-radius: 6px;
+      background: white;
+      color: var(--text);
+      padding: 5px 10px;
+      font: inherit;
+    }
+    button:hover { border-color: #6f8298; }
+    button.primary {
+      background: #2e75b6;
+      color: white;
+      border-color: #2e75b6;
+    }
+    main {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 340px;
+      gap: 12px;
+      height: calc(100vh - 62px);
+      padding: 12px;
+    }
+    .canvas-wrap, aside {
+      background: var(--panel);
+      border: 1px solid #d7dde5;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 1px 2px rgba(24, 39, 56, 0.06);
+    }
+    .canvas-wrap { position: relative; }
+    svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      min-height: 620px;
+      cursor: grab;
+    }
+    svg.dragging { cursor: grabbing; }
+    .edge {
+      stroke: var(--line);
+      stroke-width: 2;
+      fill: none;
+      marker-end: url(#arrow);
+      opacity: 0.82;
+      transition: stroke 180ms, stroke-width 180ms, opacity 180ms;
+    }
+    .edge.active {
+      stroke: var(--active);
+      stroke-width: 4;
+      opacity: 1;
+      marker-end: url(#arrow-active);
+    }
+    .edge-label {
+      font-size: 11px;
+      fill: #556274;
+      paint-order: stroke;
+      stroke: white;
+      stroke-width: 4px;
+      stroke-linejoin: round;
+      pointer-events: none;
+    }
+    .node rect {
+      rx: 7;
+      ry: 7;
+      stroke: #243244;
+      stroke-width: 1.3;
+      fill: white;
+      filter: drop-shadow(0 1px 1px rgba(25, 37, 51, 0.16));
+      transition: stroke 180ms, stroke-width 180ms, fill 180ms;
+    }
+    .node text {
+      font-size: 12px;
+      fill: #17212e;
+      pointer-events: none;
+    }
+    .node .sub {
+      font-size: 10px;
+      fill: #667384;
+    }
+    .node.active rect {
+      stroke: var(--active);
+      stroke-width: 3;
+      fill: #fff4ef;
+    }
+    .node.dim { opacity: 0.34; }
+    .node .tag {
+      font-size: 10px;
+      fill: white;
+      font-weight: 600;
+    }
+    aside {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    .panel-section {
+      padding: 14px;
+      border-bottom: 1px solid #e1e6ed;
+    }
+    .panel-section:last-child {
+      border-bottom: 0;
+      overflow: auto;
+    }
+    h2 {
+      margin: 0 0 8px;
+      font-size: 15px;
+    }
+    p {
+      margin: 6px 0;
+      line-height: 1.55;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .legend {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .legend span::before {
+      content: "";
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+      margin-right: 6px;
+      vertical-align: -1px;
+      background: var(--color);
+    }
+    ol {
+      margin: 8px 0 0 20px;
+      padding: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+      background: #eef2f6;
+      border: 1px solid #d7dde5;
+      border-radius: 4px;
+      padding: 1px 4px;
+      color: #28384b;
+    }
+    .pill {
+      display: inline-block;
+      margin: 2px 4px 2px 0;
+      padding: 2px 7px;
+      border-radius: 999px;
+      color: white;
+      font-size: 11px;
+      background: #6f7d8e;
+    }
+    @media (max-width: 980px) {
+      main {
+        grid-template-columns: 1fr;
+        height: auto;
+      }
+      .canvas-wrap { height: 680px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>移动自动化平台调用关系动态图</h1>
+    <div class="toolbar">
+      <select id="flowSelect" aria-label="选择流程">
+        <option value="run">点击开始执行</option>
+        <option value="templates">加载模板/用例库</option>
+        <option value="poll">轮询结果与停止</option>
+      </select>
+      <button id="playBtn" class="primary">播放流程</button>
+      <button id="resetBtn">重置视图</button>
+    </div>
+  </header>
+  <main>
+    <section class="canvas-wrap">
+      <svg id="graph" viewBox="0 0 1220 760" role="img" aria-label="项目调用关系动态图">
+        <defs>
+          <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="4" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L10,4 L0,8 Z" fill="#c6cfda"></path>
+          </marker>
+          <marker id="arrow-active" markerWidth="12" markerHeight="12" refX="10" refY="4" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L10,4 L0,8 Z" fill="#d94f2b"></path>
+          </marker>
+        </defs>
+        <g id="viewport">
+          <g id="edges"></g>
+          <g id="edgeLabels"></g>
+          <g id="nodes"></g>
+        </g>
+      </svg>
+    </section>
+    <aside>
+      <div class="panel-section">
+        <h2>核心结论</h2>
+        <p>这个项目是“桌面 UI + 控制器门面 + 执行编排 + 设备适配器”的分层结构。UI 不直接操作基站、SSH、手机或灌包服务器，而是把用例转换成运行请求交给执行核心。</p>
+      </div>
+      <div class="panel-section">
+        <h2>图例</h2>
+        <div class="legend">
+          <span style="--color: var(--ui)">桌面 UI</span>
+          <span style="--color: var(--core)">执行核心</span>
+          <span style="--color: var(--data)">配置/数据</span>
+          <span style="--color: var(--adapter)">适配器</span>
+          <span style="--color: var(--external)">外部系统</span>
+        </div>
+      </div>
+      <div class="panel-section">
+        <h2 id="detailTitle">点击节点查看说明</h2>
+        <p id="detailText">拖动节点可以调整布局；点击“播放流程”会按真实调用顺序高亮。</p>
+        <div id="detailTags"></div>
+      </div>
+      <div class="panel-section">
+        <h2>当前流程</h2>
+        <ol id="flowSteps"></ol>
+      </div>
+    </aside>
+  </main>
+  <script>
+    const groups = {
+      ui: { label: "UI", color: "#2e75b6" },
+      core: { label: "CORE", color: "#6b5fb5" },
+      data: { label: "DATA", color: "#2f8a68" },
+      adapter: { label: "ADAPTER", color: "#b7791f" },
+      external: { label: "EXT", color: "#5d6673" }
+    };
+
+    const nodes = [
+      { id: "entry", group: "ui", x: 70, y: 70, title: "desktop_app.py", sub: "桌面入口", detail: "配置日志和 Tk/Tcl 运行环境，然后创建 Tk root 并实例化 DesktopApp。打包后会从 exe 所在目录读取运行数据。", tags: ["main()", "logging", "Tk"] },
+      { id: "app", group: "ui", x: 250, y: 70, title: "DesktopApp", sub: "桌面壳层", detail: "负责布局、按钮事件、轮询刷新和把状态渲染到各个面板。点击开始时调用 start_run。", tags: ["desktop/main.py", "start_run", "poll"] },
+      { id: "widgets", group: "ui", x: 250, y: 220, title: "Widgets", sub: "Cases/Devices/Results", detail: "用例构建、设备选择、结果详情、运行监控和配置面板。它们只通过 app.controller 访问业务能力。", tags: ["CasesPanel", "DevicesPanel", "ResultsPanel", "SettingsPanel"] },
+      { id: "controller", group: "core", x: 470, y: 145, title: "DesktopController", sub: "桌面门面", detail: "桌面层的统一门面：设备刷新、模板读取、用例保存、创建运行、停止运行、结果查询都从这里转发。", tags: ["get_templates", "create_run", "save_case"] },
+      { id: "settings", group: "data", x: 700, y: 35, title: "app_settings.py", sub: "settings.json", detail: "读取和保存运行配置。运行开始时会取一份 settings_snapshot，保证执行期间参数来源明确。", tags: ["load_runtime_settings", "save_runtime_settings"] },
+      { id: "cases", group: "data", x: 700, y: 135, title: "CaseLibrary", sub: "cases/*.json", detail: "保存用例库。当前模板读取逻辑优先读取已保存用例，空库时才使用内置模板。", tags: ["list_cases", "save", "copy_case"] },
+      { id: "templates", group: "data", x: 700, y: 235, title: "case_templates.py", sub: "步骤模板", detail: "定义可添加步骤、默认用例模板，以及从配置重新映射步骤参数的逻辑。", tags: ["ACTIONS", "build_default_case_templates", "remap"] },
+      { id: "devices", group: "adapter", x: 700, y: 335, title: "DeviceManager", sub: "ADB 设备列表", detail: "负责发现当前连接的手机设备，供桌面左侧设备区域选择。", tags: ["get_connected_devices", "adb"] },
+      { id: "facade", group: "core", x: 470, y: 410, title: "PmTestRunManager", sub: "执行服务门面", detail: "兼容旧接口的执行入口。创建 RunPlan，创建 RunOrchestrator，并维护 run_id 到 orchestrator 的映射。", tags: ["create_run", "get_run", "request_stop"] },
+      { id: "planner", group: "core", x: 700, y: 455, title: "Planner", sub: "RunPlan/StepPlan", detail: "把 SavedCase 或旧格式 case 转换为强类型 RunPlan。每个步骤会通过 actions.py 解析到 adapter。", tags: ["build_run_plan", "resolve_action"] },
+      { id: "actions", group: "data", x: 930, y: 455, title: "actions.py", sub: "ActionSpec", detail: "维护 action 到 kind、adapter、session_key 的映射，是步骤能分发到正确适配器的关键。", tags: ["ActionSpec", "adapter routing"] },
+      { id: "orchestrator", group: "core", x: 470, y: 575, title: "RunOrchestrator", sub: "运行编排", detail: "创建 artifacts/run_id 目录，异步或同步执行所有用例，持续写 run.json 和 execution.log。", tags: ["thread", "run.json", "execution.log"] },
+      { id: "store", group: "data", x: 250, y: 575, title: "RunStore", sub: "运行状态内存库", detail: "保存当前运行状态，支持 get/list/request_stop。UI 轮询看到的状态来自这里。", tags: ["put", "get", "stop_requested"] },
+      { id: "caseExecutor", group: "core", x: 700, y: 575, title: "CaseExecutor", sub: "逐用例执行", detail: "按顺序执行用例步骤，生成 case record，并负责清理 start/stop 类会话。", tags: ["case_dir", "cleanup"] },
+      { id: "runner", group: "core", x: 930, y: 575, title: "StepRunner", sub: "步骤分发", detail: "根据 StepPlan.adapter 找到适配器，调用 adapter.run_step，并标准化为 StepRecord。", tags: ["run_step", "StepRecord"] },
+      { id: "adapters", group: "adapter", x: 930, y: 265, title: "Adapters", sub: "Web/SSH/Traffic", detail: "真实执行层。包含 BaseWebAdapter、SshAdapter、TrafficServerAdapter、TrafficAdapter、CommonAdapter 等。", tags: ["base_web", "ssh", "traffic_server", "traffic", "common"] },
+      { id: "baseWeb", group: "external", x: 1130, y: 135, title: "基站 Web", sub: "抓包/下载日志", detail: "BaseWebAdapter 通过 Web 客户端触发抓包、停止抓包和日志下载。", tags: ["pcap", "capture", "download"] },
+      { id: "baseSsh", group: "external", x: 1130, y: 235, title: "基站 SSH", sub: "RLC/速率/CPU/RRC", detail: "SshAdapter 通过 SSH 执行日志命令、RRC release、force-rlc-escape 等命令，并收集输出。", tags: ["paramiko", "commands", "logs"] },
+      { id: "trafficServer", group: "external", x: 1130, y: 335, title: "灌包服务器", sub: "iperf/ping", detail: "TrafficServerAdapter 在服务器侧启动 iperf 或 ping，并在 stop 时停止会话、保存日志。", tags: ["iperf", "ping", "ssh"] },
+      { id: "phone", group: "external", x: 1130, y: 435, title: "手机/ADB", sub: "iperf/飞行模式/ping", detail: "TrafficAdapter 通过 adb shell 调用手机侧 iperf、ping、飞行模式入网/脱网操作。", tags: ["adb shell", "/data/local/tmp/iperf"] },
+      { id: "artifacts", group: "data", x: 1130, y: 625, title: "artifacts", sub: "运行产物", detail: "保存 run.json、execution.log、pcap、ssh log、iperf log 和报告。结果详情和打开结果目录都依赖这里。", tags: ["run.json", "execution.log", "pcap", "logs"] }
+    ];
+
+    const edges = [
+      ["entry", "app", "创建"],
+      ["app", "widgets", "构建面板"],
+      ["widgets", "controller", "按钮/选择事件"],
+      ["app", "controller", "start_run/load_templates"],
+      ["controller", "settings", "读写配置"],
+      ["controller", "cases", "用例库"],
+      ["controller", "devices", "刷新设备"],
+      ["controller", "facade", "创建/查询运行"],
+      ["facade", "settings", "运行配置快照"],
+      ["facade", "cases", "模板优先用例库"],
+      ["facade", "templates", "空库回退内置模板"],
+      ["facade", "planner", "build_run_plan"],
+      ["planner", "actions", "resolve_action"],
+      ["facade", "orchestrator", "create_run"],
+      ["orchestrator", "store", "保存状态"],
+      ["orchestrator", "caseExecutor", "逐用例"],
+      ["caseExecutor", "runner", "逐步骤"],
+      ["runner", "adapters", "adapter.run_step"],
+      ["adapters", "baseWeb", "BaseWebAdapter"],
+      ["adapters", "baseSsh", "SshAdapter"],
+      ["adapters", "trafficServer", "TrafficServerAdapter"],
+      ["adapters", "phone", "TrafficAdapter"],
+      ["orchestrator", "artifacts", "写 run.json/log"],
+      ["adapters", "artifacts", "写 pcap/log"],
+      ["app", "facade", "轮询 get_run/list_runs"],
+      ["facade", "store", "读状态/停止标记"]
+    ].map(([from, to, label], i) => ({ id: `e${i}`, from, to, label }));
+
+    const flows = {
+      templates: {
+        title: "加载模板/用例库",
+        steps: [
+          "DesktopApp.load_templates() 响应刷新模板。",
+          "DesktopController.get_templates() 先读取 CaseLibrary。",
+          "如果 cases/*.json 有保存用例，直接作为模板返回。",
+          "如果用例库为空，PmTestRunManager 使用 case_templates.py 生成内置模板。",
+          "CasesPanel.set_templates() 刷新下拉框和步骤模板。"
+        ],
+        path: ["app", "controller", "cases", "facade", "templates", "widgets"]
+      },
+      run: {
+        title: "点击开始执行",
+        steps: [
+          "用户点击开始，DesktopApp.start_run() 检查设备和用例队列。",
+          "从 settings.json 读取配置，并把配置重新映射到用例步骤参数。",
+          "DesktopController.create_run() 把 SavedCase 转成 dict。",
+          "PmTestRunManager.create_run() 创建 RunPlan 和 RunOrchestrator。",
+          "RunOrchestrator 创建 artifacts/run_id 并启动执行线程。",
+          "CaseExecutor 逐用例，StepRunner 逐步骤调用对应 Adapter。",
+          "Adapter 操作基站 Web、基站 SSH、灌包服务器或手机 ADB，并写入日志/pcap。",
+          "RunOrchestrator 更新 RunStore 和 run.json，UI 轮询展示结果。"
+        ],
+        path: ["app", "controller", "settings", "facade", "planner", "actions", "orchestrator", "caseExecutor", "runner", "adapters", "baseWeb", "baseSsh", "trafficServer", "phone", "artifacts", "store", "app"]
+      },
+      poll: {
+        title: "轮询结果与停止",
+        steps: [
+          "DesktopApp 每 2 秒调用 _schedule_poll()。",
+          "load_run_detail() 通过 Controller 查询当前 run_id。",
+          "PmTestRunManager 找到对应 RunOrchestrator。",
+          "RunOrchestrator 从 RunStore 读取最新状态。",
+          "ResultsPanel、RunMonitorPanel、InspectorPanel 渲染状态。",
+          "点击停止时 request_stop() 在 RunStore 设置停止标记，执行循环下一个检查点停止。"
+        ],
+        path: ["app", "controller", "facade", "orchestrator", "store", "widgets", "app"]
+      }
+    };
+
+    const nodeMap = new Map(nodes.map(n => [n.id, n]));
+    const svg = document.getElementById("graph");
+    const viewport = document.getElementById("viewport");
+    const edgeLayer = document.getElementById("edges");
+    const labelLayer = document.getElementById("edgeLabels");
+    const nodeLayer = document.getElementById("nodes");
+    const detailTitle = document.getElementById("detailTitle");
+    const detailText = document.getElementById("detailText");
+    const detailTags = document.getElementById("detailTags");
+    const flowSteps = document.getElementById("flowSteps");
+    const flowSelect = document.getElementById("flowSelect");
+    let activePath = [];
+    let timer = null;
+    let selected = null;
+    let pan = { x: 0, y: 0, scale: 1, dragging: false, sx: 0, sy: 0 };
+
+    function edgeKey(a, b) { return `${a}->${b}`; }
+
+    function render() {
+      edgeLayer.innerHTML = "";
+      labelLayer.innerHTML = "";
+      nodeLayer.innerHTML = "";
+      edges.forEach(edge => {
+        const from = nodeMap.get(edge.from);
+        const to = nodeMap.get(edge.to);
+        const active = isEdgeActive(edge.from, edge.to);
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        const start = anchor(from, to);
+        const end = anchor(to, from);
+        const midX = (start.x + end.x) / 2;
+        const midY = (start.y + end.y) / 2;
+        const curve = Math.max(-70, Math.min(70, (end.y - start.y) * 0.18));
+        line.setAttribute("d", `M ${start.x} ${start.y} Q ${midX} ${midY - curve} ${end.x} ${end.y}`);
+        line.setAttribute("class", `edge${active ? " active" : ""}`);
+        line.dataset.edge = edgeKey(edge.from, edge.to);
+        edgeLayer.appendChild(line);
+
+        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        label.setAttribute("x", midX);
+        label.setAttribute("y", midY - curve - 6);
+        label.setAttribute("text-anchor", "middle");
+        label.setAttribute("class", "edge-label");
+        label.textContent = edge.label;
+        labelLayer.appendChild(label);
+      });
+
+      nodes.forEach(node => {
+        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        const active = activePath.includes(node.id);
+        const dim = activePath.length && !active;
+        g.setAttribute("class", `node${active ? " active" : ""}${dim ? " dim" : ""}`);
+        g.setAttribute("transform", `translate(${node.x},${node.y})`);
+        g.dataset.id = node.id;
+
+        const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        rect.setAttribute("width", 150);
+        rect.setAttribute("height", 68);
+        rect.setAttribute("fill", "white");
+        g.appendChild(rect);
+
+        const tagRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        tagRect.setAttribute("x", 8);
+        tagRect.setAttribute("y", 8);
+        tagRect.setAttribute("width", 54);
+        tagRect.setAttribute("height", 17);
+        tagRect.setAttribute("rx", 4);
+        tagRect.setAttribute("fill", groups[node.group].color);
+        g.appendChild(tagRect);
+
+        const tag = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        tag.setAttribute("x", 35);
+        tag.setAttribute("y", 21);
+        tag.setAttribute("text-anchor", "middle");
+        tag.setAttribute("class", "tag");
+        tag.textContent = groups[node.group].label;
+        g.appendChild(tag);
+
+        const title = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        title.setAttribute("x", 10);
+        title.setAttribute("y", 43);
+        title.textContent = node.title;
+        g.appendChild(title);
+
+        const sub = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        sub.setAttribute("x", 10);
+        sub.setAttribute("y", 59);
+        sub.setAttribute("class", "sub");
+        sub.textContent = node.sub;
+        g.appendChild(sub);
+
+        g.addEventListener("pointerdown", startNodeDrag);
+        g.addEventListener("click", () => showDetail(node));
+        nodeLayer.appendChild(g);
+      });
+    }
+
+    function anchor(a, b) {
+      const ax = a.x + 75;
+      const ay = a.y + 34;
+      const bx = b.x + 75;
+      const by = b.y + 34;
+      const dx = bx - ax;
+      const dy = by - ay;
+      if (Math.abs(dx) > Math.abs(dy)) {
+        return { x: ax + Math.sign(dx) * 75, y: ay };
+      }
+      return { x: ax, y: ay + Math.sign(dy) * 34 };
+    }
+
+    function isEdgeActive(from, to) {
+      for (let i = 0; i < activePath.length - 1; i += 1) {
+        if (activePath[i] === from && activePath[i + 1] === to) return true;
+      }
+      return false;
+    }
+
+    function showDetail(node) {
+      selected = node.id;
+      detailTitle.textContent = node.title;
+      detailText.textContent = node.detail;
+      detailTags.innerHTML = "";
+      node.tags.forEach(tag => {
+        const span = document.createElement("span");
+        span.className = "pill";
+        span.style.background = groups[node.group].color;
+        span.textContent = tag;
+        detailTags.appendChild(span);
+      });
+    }
+
+    function renderFlowSteps() {
+      const flow = flows[flowSelect.value];
+      flowSteps.innerHTML = "";
+      flow.steps.forEach(step => {
+        const li = document.createElement("li");
+        li.textContent = step;
+        flowSteps.appendChild(li);
+      });
+    }
+
+    function playFlow() {
+      clearInterval(timer);
+      const path = flows[flowSelect.value].path;
+      activePath = [];
+      let i = 0;
+      timer = setInterval(() => {
+        activePath = path.slice(0, i + 1);
+        render();
+        const current = nodeMap.get(path[Math.min(i, path.length - 1)]);
+        if (current) showDetail(current);
+        i += 1;
+        if (i >= path.length) clearInterval(timer);
+      }, 650);
+    }
+
+    function resetView() {
+      clearInterval(timer);
+      activePath = [];
+      pan = { x: 0, y: 0, scale: 1, dragging: false, sx: 0, sy: 0 };
+      viewport.setAttribute("transform", "");
+      render();
+      detailTitle.textContent = "点击节点查看说明";
+      detailText.textContent = "拖动节点可以调整布局；点击“播放流程”会按真实调用顺序高亮。";
+      detailTags.innerHTML = "";
+    }
+
+    function startNodeDrag(event) {
+      event.stopPropagation();
+      const id = event.currentTarget.dataset.id;
+      const node = nodeMap.get(id);
+      const start = clientToSvg(event);
+      const ox = node.x;
+      const oy = node.y;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      function move(e) {
+        const p = clientToSvg(e);
+        node.x = ox + (p.x - start.x);
+        node.y = oy + (p.y - start.y);
+        render();
+      }
+      function up() {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+      }
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+    }
+
+    function clientToSvg(event) {
+      const pt = svg.createSVGPoint();
+      pt.x = event.clientX;
+      pt.y = event.clientY;
+      const matrix = svg.getScreenCTM().inverse();
+      const p = pt.matrixTransform(matrix);
+      return { x: (p.x - pan.x) / pan.scale, y: (p.y - pan.y) / pan.scale };
+    }
+
+    svg.addEventListener("pointerdown", event => {
+      if (event.target.closest && event.target.closest(".node")) return;
+      pan.dragging = true;
+      pan.sx = event.clientX - pan.x;
+      pan.sy = event.clientY - pan.y;
+      svg.classList.add("dragging");
+    });
+    window.addEventListener("pointermove", event => {
+      if (!pan.dragging) return;
+      pan.x = event.clientX - pan.sx;
+      pan.y = event.clientY - pan.sy;
+      viewport.setAttribute("transform", `translate(${pan.x} ${pan.y}) scale(${pan.scale})`);
+    });
+    window.addEventListener("pointerup", () => {
+      pan.dragging = false;
+      svg.classList.remove("dragging");
+    });
+    svg.addEventListener("wheel", event => {
+      event.preventDefault();
+      const old = pan.scale;
+      const next = Math.max(0.55, Math.min(1.8, old + (event.deltaY > 0 ? -0.08 : 0.08)));
+      pan.scale = next;
+      viewport.setAttribute("transform", `translate(${pan.x} ${pan.y}) scale(${pan.scale})`);
+    }, { passive: false });
+
+    document.getElementById("playBtn").addEventListener("click", playFlow);
+    document.getElementById("resetBtn").addEventListener("click", resetView);
+    flowSelect.addEventListener("change", () => {
+      activePath = [];
+      renderFlowSteps();
+      render();
+    });
+
+    renderFlowSteps();
+    render();
+  </script>
+</body>
+</html>
