@@ -227,7 +227,7 @@ def test_cases_panel_creates_case_from_selected_template(tmp_path):
     assert panel.selected_case.name == "RRC 测试用例"
     assert [step.action for step in panel.selected_case.steps[:4]] == [
         "base_web_capture_start",
-        "phone_airplane_cycle",
+        "base_ssh_command_start",
         "base_ssh_command_start",
         "base_ssh_command_start",
     ]

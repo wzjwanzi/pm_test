@@ -113,7 +113,9 @@ def test_controller_wraps_devices_templates_and_runs():
     controller = DesktopController(device_manager=FakeDeviceManager(), pm_manager=FakePmManager())
 
     assert controller.refresh_devices() == ["device-1"]
-    assert "双向灌包" in [item["name"] for item in controller.get_templates()]
+    template_names = [item["name"] for item in controller.get_templates()]
+    assert "双向灌包" in template_names
+    assert "入网" in template_names
     assert controller.inspect_device("device-1")["success"] is True
     assert controller.list_runs()[0]["run_id"] == "run-1"
     assert controller.get_run("run-1")["status"] == "passed"

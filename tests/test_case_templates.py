@@ -273,35 +273,64 @@ def test_builtin_case_templates_use_explicit_start_stop_order():
 
     assert [step.action for step in downlink.steps] == [
         "base_web_capture_start",
+        "base_ssh_rate_log_start",
+        "common_delay",
+        "phone_airplane_mode_off",
         "phone_downlink_receive_start",
         "traffic_server_downlink_start",
         "common_delay",
         "traffic_server_downlink_stop",
         "phone_downlink_receive_stop",
+        "phone_airplane_mode_on",
+        "common_delay",
+        "base_ssh_rate_log_stop",
         "base_web_capture_stop",
     ]
-    delay = downlink.steps[3]
+    delay = downlink.steps[2]
     assert delay.params["delay_seconds"] == 30
     assert [step.action for step in uplink.steps] == [
         "base_web_capture_start",
+        "base_ssh_rate_log_start",
+        "common_delay",
+        "phone_airplane_mode_off",
         "traffic_server_uplink_receive_start",
         "phone_uplink_iperf_start",
         "common_delay",
         "phone_uplink_iperf_stop",
         "traffic_server_uplink_receive_stop",
+        "phone_airplane_mode_on",
+        "common_delay",
+        "base_ssh_rate_log_stop",
         "base_web_capture_stop",
     ]
     assert [step.action for step in bidirectional.steps] == [
         "base_web_capture_start",
+        "base_ssh_rate_log_start",
+        "common_delay",
+        "phone_airplane_mode_off",
         "phone_downlink_receive_start",
         "traffic_server_downlink_start",
         "traffic_server_uplink_receive_start",
         "phone_uplink_iperf_start",
         "common_delay",
-        "phone_uplink_iperf_stop",
-        "traffic_server_uplink_receive_stop",
         "traffic_server_downlink_stop",
         "phone_downlink_receive_stop",
+        "phone_uplink_iperf_stop",
+        "traffic_server_uplink_receive_stop",
+        "phone_airplane_mode_on",
+        "common_delay",
+        "base_ssh_rate_log_stop",
+        "base_web_capture_stop",
+    ]
+
+
+def test_builtin_attach_template_uses_saved_case_order():
+    attach = next(item for item in build_default_case_templates({}) if item.name == "入网")
+
+    assert [step.action for step in attach.steps] == [
+        "base_web_capture_start",
+        "phone_airplane_mode_off",
+        "phone_airplane_mode_on",
         "base_web_capture_stop",
     ]
 
@@ -319,10 +348,10 @@ def test_builtin_rrc_template_contains_logging_repeat_and_cleanup_steps():
     assert "终端入网" in rrc.description
     assert [step.action for step in rrc.steps] == [
         "base_web_capture_start",
-        "phone_airplane_cycle",
         "base_ssh_command_start",
         "base_ssh_command_start",
         "base_ssh_command_start",
+        "phone_airplane_mode_off",
         "traffic_server_down_ping_start",
         "base_ssh_command_repeat",
         "base_ssh_command_repeat",
@@ -330,13 +359,14 @@ def test_builtin_rrc_template_contains_logging_repeat_and_cleanup_steps():
         "base_ssh_command_stop",
         "base_ssh_command_stop",
         "base_ssh_command_stop",
+        "phone_airplane_mode_on",
         "base_web_capture_stop",
     ]
-    assert rrc.steps[1].params == {"detach_wait_seconds": 5, "attach_wait_seconds": 5}
-    assert rrc.steps[2].params["session_key"] == "rrc_rlc_up"
-    assert "dump-rlc-om-info" in rrc.steps[2].params["command"]
-    assert rrc.steps[4].params["session_key"] == "rrc_cpu"
-    assert "top -b -n 1" in rrc.steps[4].params["command"]
+    assert rrc.steps[4].params == {}
+    assert rrc.steps[1].params["session_key"] == "rrc_rlc_up"
+    assert "dump-rlc-om-info" in rrc.steps[1].params["command"]
+    assert rrc.steps[3].params["session_key"] == "rrc_cpu"
+    assert "top -b -n 1" in rrc.steps[3].params["command"]
     assert rrc.steps[5].params["ping_target"] == "10.6.250.2"
     assert rrc.steps[6].params["repeat_count"] == 8
     assert rrc.steps[6].params["interval_seconds"] == 5
@@ -347,10 +377,10 @@ def test_builtin_rrc_template_contains_logging_repeat_and_cleanup_steps():
 def test_rrc_template_uses_documented_ssh_log_and_control_commands():
     rrc = next(item for item in build_default_case_templates({}) if item.name == "RRC 测试用例")
 
-    assert "odi -n duapp0 dump-rlc-om-info" in rrc.steps[2].params["command"]
-    assert "odi -n upapp net-stat" in rrc.steps[2].params["command"]
-    assert "show-mac-throughput-count" in rrc.steps[3].params["command"]
-    assert "top -b -n 1" in rrc.steps[4].params["command"]
+    assert "odi -n duapp0 dump-rlc-om-info" in rrc.steps[1].params["command"]
+    assert "odi -n upapp net-stat" in rrc.steps[1].params["command"]
+    assert "show-mac-throughput-count" in rrc.steps[2].params["command"]
+    assert "top -b -n 1" in rrc.steps[3].params["command"]
     assert "display-ue-info" in rrc.steps[6].params["command"]
     assert "odi -n duapp0 release-ue" in rrc.steps[6].params["command"]
     assert "odi -n duapp0 force-rlc-escape-ctrl 1" in rrc.steps[7].params["command"]
@@ -373,8 +403,8 @@ def test_rrc_template_uses_current_runtime_connection_settings():
     rrc = next(item for item in templates if item.name == "RRC 测试用例")
 
     assert rrc.steps[0].params["capture_fapi_interface"] == "FAPI1"
-    assert rrc.steps[2].params["ssh_host"] == "192.168.13.236"
-    assert rrc.steps[2].params["ssh_password"] == "Root@236_"
+    assert rrc.steps[1].params["ssh_host"] == "192.168.13.236"
+    assert rrc.steps[1].params["ssh_password"] == "Root@236_"
     assert rrc.steps[5].params["ping_target"] == "10.6.250.2"
 
 
@@ -396,9 +426,9 @@ def test_rrc_template_uses_runtime_configured_ssh_log_commands():
     )
     rrc = next(item for item in templates if item.name == "RRC 测试用例")
 
-    assert rrc.steps[2].params["command"] == "custom rlc-up"
-    assert rrc.steps[3].params["command"] == "custom rate"
-    assert rrc.steps[4].params["command"] == "custom cpu"
+    assert rrc.steps[1].params["command"] == "custom rlc-up"
+    assert rrc.steps[2].params["command"] == "custom rate"
+    assert rrc.steps[3].params["command"] == "custom cpu"
     assert rrc.steps[6].params["command"] == "custom release"
     assert rrc.steps[6].params["repeat_count"] == 7
     assert rrc.steps[6].params["interval_seconds"] == 11
@@ -438,9 +468,9 @@ def test_remap_rrc_case_params_refreshes_configured_ssh_log_commands():
 
     remap_case_params_from_settings(case, new_settings)
 
-    assert case.steps[2].params["command"] == "new rlc-up"
-    assert case.steps[3].params["command"] == "new rate"
-    assert case.steps[4].params["command"] == "new cpu"
+    assert case.steps[1].params["command"] == "new rlc-up"
+    assert case.steps[2].params["command"] == "new rate"
+    assert case.steps[3].params["command"] == "new cpu"
     assert case.steps[6].params["command"] == "new release"
     assert case.steps[6].params["repeat_count"] == 6
     assert case.steps[6].params["interval_seconds"] == 12
