@@ -269,6 +269,7 @@ def test_builtin_case_templates_use_explicit_start_stop_order():
     templates = build_default_case_templates({"traffic_server_host": "10.88.149.164", "common": {"delay_seconds": 30}})
     downlink = next(item for item in templates if item.name == "下行灌包")
     uplink = next(item for item in templates if item.name == "上行灌包")
+    bidirectional = next(item for item in templates if item.name == "双向灌包")
 
     assert [step.action for step in downlink.steps] == [
         "base_web_capture_start",
@@ -288,6 +289,19 @@ def test_builtin_case_templates_use_explicit_start_stop_order():
         "common_delay",
         "phone_uplink_iperf_stop",
         "traffic_server_uplink_receive_stop",
+        "base_web_capture_stop",
+    ]
+    assert [step.action for step in bidirectional.steps] == [
+        "base_web_capture_start",
+        "phone_downlink_receive_start",
+        "traffic_server_downlink_start",
+        "traffic_server_uplink_receive_start",
+        "phone_uplink_iperf_start",
+        "common_delay",
+        "phone_uplink_iperf_stop",
+        "traffic_server_uplink_receive_stop",
+        "traffic_server_downlink_stop",
+        "phone_downlink_receive_stop",
         "base_web_capture_stop",
     ]
 

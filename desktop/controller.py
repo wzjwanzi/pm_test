@@ -40,8 +40,14 @@ class DesktopController:
 
     def get_templates(self) -> list[dict]:
         saved_cases = self.case_library.list_cases()
-        if saved_cases:
-            return [case.to_dict() for case in saved_cases]
+        templates = [case.to_dict() for case in saved_cases]
+        existing_names = {case.name for case in saved_cases}
+        settings = self.load_settings()
+        for case in build_default_case_templates(settings):
+            if case.name not in existing_names:
+                templates.append(case.to_dict())
+        if templates:
+            return templates
         return list(self.pm_manager.get_templates())
 
     def create_run(self, device_id: str, cases) -> dict:

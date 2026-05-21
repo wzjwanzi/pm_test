@@ -75,7 +75,8 @@ def test_controller_uses_saved_cases_as_templates(tmp_path):
     templates = controller.get_templates()
     created = controller.create_case_from_template("saved-template", {})
 
-    assert [item["name"] for item in templates] == ["saved-template"]
+    assert "saved-template" in [item["name"] for item in templates]
+    assert "双向灌包" in [item["name"] for item in templates]
     assert created.name == "saved-template"
     assert created.case_id != source.case_id
     assert created.steps[0].action == "phone_ping"
@@ -112,7 +113,7 @@ def test_controller_wraps_devices_templates_and_runs():
     controller = DesktopController(device_manager=FakeDeviceManager(), pm_manager=FakePmManager())
 
     assert controller.refresh_devices() == ["device-1"]
-    assert controller.get_templates()[0]["template_id"] == "fixed_ping_only"
+    assert "双向灌包" in [item["name"] for item in controller.get_templates()]
     assert controller.inspect_device("device-1")["success"] is True
     assert controller.list_runs()[0]["run_id"] == "run-1"
     assert controller.get_run("run-1")["status"] == "passed"

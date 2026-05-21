@@ -528,6 +528,23 @@ def build_default_case_templates(settings: dict[str, Any]) -> list[SavedCase]:
             settings,
         ),
         _case(
+            "双向灌包",
+            [
+                "base_web_capture_start",
+                "phone_downlink_receive_start",
+                "traffic_server_downlink_start",
+                "traffic_server_uplink_receive_start",
+                "phone_uplink_iperf_start",
+                "common_delay",
+                "phone_uplink_iperf_stop",
+                "traffic_server_uplink_receive_stop",
+                "traffic_server_downlink_stop",
+                "phone_downlink_receive_stop",
+                "base_web_capture_stop",
+            ],
+            settings,
+        ),
+        _case(
             "下行 ping",
             [
                 "base_web_capture_start",
