@@ -16,9 +16,17 @@ class FakeDeviceManager:
         return ["device-1"]
 
 
+class MultiDeviceManager:
+    last_error = ""
+
+    def get_connected_devices(self):
+        return ["device-1", "device-2"]
+
+
 class FakePmManager:
     def __init__(self):
         self.created = None
+        self.created_runs = []
 
     def get_templates(self):
         return [{"template_id": "fixed_ping_only", "name": "Ping", "host": "1.1.1.1"}]
@@ -28,7 +36,9 @@ class FakePmManager:
 
     def create_run(self, device_id, cases):
         self.created = (device_id, cases)
-        return {"success": True, "run": {"run_id": "run-1", "device_id": device_id, "status": "queued", "summary": {"passed": 0, "total": 1}}}
+        self.created_runs.append((device_id, cases))
+        run_id = f"run-{len(self.created_runs)}"
+        return {"success": True, "run": {"run_id": run_id, "device_id": device_id, "status": "queued", "summary": {"passed": 0, "total": 1}}}
 
     def list_runs(self, limit=20):
         return [{"run_id": "run-1", "device_id": "device-1", "status": "queued", "summary": {"passed": 0, "total": 1}}]
@@ -52,6 +62,22 @@ def _build_app(tmp_path=None):
     root.withdraw()
     controller_kwargs = {
         "device_manager": FakeDeviceManager(),
+        "pm_manager": FakePmManager(),
+    }
+    if tmp_path is not None:
+        controller_kwargs["case_library"] = CaseLibrary(tmp_path)
+    controller = DesktopController(**controller_kwargs)
+    app = DesktopApp(root, controller=controller, start_polling=False)
+    root.update_idletasks()
+    return root, app, controller
+
+
+def _build_multi_device_app(tmp_path=None):
+    _prepare_tk_env()
+    root = tk.Tk()
+    root.withdraw()
+    controller_kwargs = {
+        "device_manager": MultiDeviceManager(),
         "pm_manager": FakePmManager(),
     }
     if tmp_path is not None:
@@ -281,6 +307,48 @@ def test_start_run_preserves_per_step_delay_seconds(tmp_path):
     payload = controller.pm_manager.created[1][0]
     delay_payload = next(step for step in payload["steps"] if step["action"] == "common_delay")
     assert delay_payload["params"]["delay_seconds"] == "90"
+
+    root.destroy()
+
+
+def test_start_run_can_run_same_queue_on_two_selected_devices(tmp_path):
+    root, app, controller = _build_multi_device_app(tmp_path)
+    case = SavedCase.new("case-a", [])
+    controller.save_case(case)
+    app.state.add_case(case)
+    app.devices_panel.device_list.selection_clear(0, tk.END)
+    app.devices_panel.device_list.selection_set(0)
+    app.devices_panel.device_list.selection_set(1)
+    app.devices_panel._on_select()
+    app.devices_panel.run_mode_var.set(app.devices_panel.RUN_MODE_SAME)
+
+    app.start_run()
+
+    assert [device for device, _cases in controller.pm_manager.created_runs] == ["device-1", "device-2"]
+    assert all(cases[0]["name"] == case.name for _device, cases in controller.pm_manager.created_runs)
+    assert app.state.selected_run_ids == ["run-1", "run-2"]
+    assert app.state.selected_run_id == "run-2"
+
+    root.destroy()
+
+
+def test_start_run_can_run_different_cases_on_different_devices(tmp_path):
+    root, app, controller = _build_multi_device_app(tmp_path)
+    case_a = SavedCase.new("case-a", [])
+    case_b = SavedCase.new("case-b", [])
+    controller.save_case(case_a)
+    controller.save_case(case_b)
+    app.state.add_case(case_a)
+    app.state.add_case(case_b)
+    app.state.assign_case_devices(0, ["device-1"])
+    app.state.assign_case_devices(1, ["device-2"])
+    app.devices_panel.run_mode_var.set(app.devices_panel.RUN_MODE_BY_CASE)
+
+    app.start_run()
+
+    assert [device for device, _cases in controller.pm_manager.created_runs] == ["device-1", "device-2"]
+    assert controller.pm_manager.created_runs[0][1][0]["name"] == case_a.name
+    assert controller.pm_manager.created_runs[1][1][0]["name"] == case_b.name
 
     root.destroy()
 

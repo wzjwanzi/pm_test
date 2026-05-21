@@ -42,9 +42,12 @@ class DesktopState:
     """Shared state for desktop widgets."""
 
     selected_device_id: str = ""
+    selected_device_ids: list[str] = field(default_factory=list)
     selected_run_id: str = ""
+    selected_run_ids: list[str] = field(default_factory=list)
     selected_case_index: int = -1
     case_queue: list[CaseDraft] = field(default_factory=list)
+    case_device_ids: dict[int, list[str]] = field(default_factory=dict)
     latest_run: dict[str, Any] | None = None
     message: str = ""
 
@@ -62,5 +65,18 @@ class DesktopState:
         return None
 
     def clear_cases(self) -> None:
+        for case in self.case_queue:
+            self.case_device_ids.pop(id(case), None)
         self.case_queue.clear()
         self.selected_case_index = -1
+
+    def set_selected_devices(self, device_ids: list[str]) -> None:
+        self.selected_device_ids = list(dict.fromkeys(device_ids))
+        self.selected_device_id = self.selected_device_ids[0] if self.selected_device_ids else ""
+
+    def assign_case_devices(self, index: int, device_ids: list[str]) -> None:
+        if 0 <= index < len(self.case_queue):
+            self.case_device_ids[id(self.case_queue[index])] = list(dict.fromkeys(device_ids))
+
+    def case_devices(self, case: CaseDraft) -> list[str]:
+        return list(self.case_device_ids.get(id(case), []))

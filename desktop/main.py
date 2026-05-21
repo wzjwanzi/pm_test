@@ -5,9 +5,9 @@ import tkinter as tk
 from tkinter import ttk
 
 from desktop.case_models import SavedCase
+from desktop.case_templates import remap_case_params_from_settings
 from desktop.controller import DesktopController
 from desktop.state import CaseDraft, DesktopState, normalize_status
-from desktop.case_templates import remap_case_params_from_settings
 from desktop.widgets.cases import CasesPanel
 from desktop.widgets.devices import DevicesPanel
 from desktop.widgets.inspector import InspectorPanel
@@ -150,7 +150,7 @@ class DesktopApp:
         self.wait_spin.grid(row=1, column=4, sticky="w", pady=(10, 0))
         ttk.Button(self.toolbar, text="开始", command=self.start_run, style="Compact.TButton").grid(row=1, column=5, padx=(24, 0), pady=(10, 0))
         ttk.Button(self.toolbar, text="停止", command=self.stop_run, style="Compact.TButton").grid(row=1, column=6, padx=(5, 0), pady=(10, 0))
-        self.header_status = ttk.Label(self.toolbar, text="状态：空闲", style="Toolbar.TLabel")
+        self.header_status = ttk.Label(self.toolbar, text="状态: 空闲", style="Toolbar.TLabel")
         self.header_status.grid(row=1, column=7, sticky="w", padx=(14, 0), pady=(10, 0))
         ttk.Label(self.toolbar, textvariable=self.message_var, style="Toolbar.TLabel").grid(
             row=1,
@@ -181,7 +181,10 @@ class DesktopApp:
         self.set_message("配置窗口已打开")
 
     def set_selected_device(self, device_id: str) -> None:
-        self.state.selected_device_id = device_id
+        self.set_selected_devices([device_id] if device_id else [])
+
+    def set_selected_devices(self, device_ids: list[str]) -> None:
+        self.state.set_selected_devices(device_ids)
         self.devices_panel.refresh_selected()
         self._refresh_header()
 
@@ -247,44 +250,73 @@ class DesktopApp:
         self.inspector_panel.render_case(None)
 
     def start_run(self) -> None:
-        if not self.state.selected_device_id:
+        devices = self.state.selected_device_ids or ([self.state.selected_device_id] if self.state.selected_device_id else [])
+        if not devices:
             self.set_message("请先选择设备")
             return
-        if not self.state.case_queue:
-            selected_case = self.cases_panel.selected_case
-            if selected_case:
-                self.state.add_case(selected_case)
-                self.cases_panel.refresh_queue()
-            else:
-                self.set_message("请先选择或加入用例")
-                return
+        if not self._ensure_case_queue():
+            return
         try:
             settings = self.controller.load_settings()
             for case in self.state.case_queue:
                 if hasattr(case, "steps"):
                     remap_case_params_from_settings(case, settings)
                     self.controller.save_case(case)
-            result = self.controller.create_run(self.state.selected_device_id, self.state.case_queue)
-            run = result.get("run", result)
-            self.state.selected_run_id = run.get("run_id", "")
-            self.state.latest_run = run
-            self.results_panel.render_run(run)
-            self.run_monitor_panel.render_run(run)
-            self.inspector_panel.render_run(run)
+            runs = self._create_runs_for_mode(devices)
+            if not runs:
+                self.set_message("没有可创建的任务")
+                return
+            self.state.selected_run_ids = [run.get("run_id", "") for run in runs if run.get("run_id")]
+            self.state.selected_run_id = self.state.selected_run_ids[-1] if self.state.selected_run_ids else ""
+            self.state.latest_run = runs[-1]
+            self.results_panel.render_run(runs[-1])
+            self.run_monitor_panel.render_run(runs[-1])
+            self.inspector_panel.render_run(runs[-1])
             self.refresh_runs()
-            self.set_message(f"任务已创建: {self.state.selected_run_id}")
+            self.set_message(f"任务已创建: {', '.join(self.state.selected_run_ids)}")
         except Exception as exc:
             self.set_message(f"创建任务失败: {exc}")
 
+    def _ensure_case_queue(self) -> bool:
+        if self.state.case_queue:
+            return True
+        selected_case = self.cases_panel.selected_case
+        if selected_case:
+            self.state.add_case(selected_case)
+            self.cases_panel.refresh_queue()
+            return True
+        self.set_message("请先选择或加入用例")
+        return False
+
+    def _create_runs_for_mode(self, devices: list[str]) -> list[dict]:
+        mode = self.devices_panel.run_mode_var.get()
+        if mode == self.devices_panel.RUN_MODE_BY_CASE:
+            grouped: dict[str, list] = {}
+            for case in self.state.case_queue:
+                assigned = self.state.case_devices(case) or devices
+                for device_id in assigned:
+                    grouped.setdefault(device_id, []).append(case)
+            return [self._create_single_run(device_id, cases) for device_id, cases in grouped.items()]
+        return [self._create_single_run(device_id, self.state.case_queue) for device_id in devices]
+
+    def _create_single_run(self, device_id: str, cases) -> dict:
+        result = self.controller.create_run(device_id, cases)
+        return result.get("run", result)
+
     def stop_run(self) -> None:
-        if not self.state.selected_run_id:
+        run_ids = self.state.selected_run_ids or ([self.state.selected_run_id] if self.state.selected_run_id else [])
+        if not run_ids:
             self.set_message("没有选中的任务")
             return
-        result = self.controller.request_stop(self.state.selected_run_id)
-        if result:
-            self.state.latest_run = result
-            self.results_panel.render_run(result)
-            self.inspector_panel.render_run(result)
+        latest = None
+        for run_id in run_ids:
+            result = self.controller.request_stop(run_id)
+            if result:
+                latest = result
+        if latest:
+            self.state.latest_run = latest
+            self.results_panel.render_run(latest)
+            self.inspector_panel.render_run(latest)
             self.set_message("已请求停止任务")
 
     def refresh_runs(self) -> None:
@@ -300,6 +332,7 @@ class DesktopApp:
             self.set_message("未找到任务")
             return
         self.state.selected_run_id = run_id
+        self.state.selected_run_ids = [run_id]
         self.state.latest_run = run
         self.results_panel.render_run(run)
         self.run_monitor_panel.render_run(run)
@@ -328,8 +361,10 @@ class DesktopApp:
 
     def _refresh_header(self) -> None:
         status = normalize_status(self.state.latest_run)
+        devices = self.state.selected_device_ids or ([self.state.selected_device_id] if self.state.selected_device_id else [])
+        run_ids = self.state.selected_run_ids or ([self.state.selected_run_id] if self.state.selected_run_id else [])
         self.header_status.configure(
-            text=f"设备: {self.state.selected_device_id or '-'} | 任务: {self.state.selected_run_id or '-'} | 状态: {status}"
+            text=f"设备: {', '.join(devices) if devices else '-'} | 任务: {', '.join(run_ids) if run_ids else '-'} | 状态: {status}"
         )
 
     def _schedule_poll(self) -> None:

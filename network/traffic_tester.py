@@ -294,19 +294,35 @@ class TrafficTester:
     def set_airplane_mode(self, enabled: bool) -> Dict:
         """Toggle device airplane mode through adb shell."""
         action = "enable" if enabled else "disable"
-        scripts = [f"cmd connectivity airplane-mode {action}"]
+        state_value = "1" if enabled else "0"
+        state_text = "true" if enabled else "false"
+        scripts = [
+            f"cmd connectivity airplane-mode {action}",
+            f"settings put global airplane_mode_on {state_value}",
+            f"am broadcast -a android.intent.action.AIRPLANE_MODE --ez state {state_text}",
+        ]
         commands = []
         try:
             self.last_error = ""
             for script in scripts:
-                result = self._adb_shell_script(script, check=True, timeout=20)
+                result = self._adb_shell_script(script, check=False, timeout=20)
                 commands.append(
                     {
-                        "command": f"adb shell {script}",
+                        "command": self._adb_display_command(script),
                         "stdout": (result.stdout or "").strip(),
                         "stderr": (result.stderr or "").strip(),
                         "exit_status": result.returncode,
                     }
+                )
+            observed = self._read_airplane_mode_state()
+            success = any(item["exit_status"] == 0 for item in commands)
+            if observed in {"0", "1"}:
+                success = success and observed == state_value
+            if not success:
+                expected = "enabled" if enabled else "disabled"
+                raise RuntimeError(
+                    f"Airplane mode was not {expected} on selected device {self.device_id}. "
+                    f"Expected airplane_mode_on={state_value}, observed={observed or 'unknown'}."
                 )
             return {
                 "success": True,
@@ -314,6 +330,7 @@ class TrafficTester:
                 "enabled": enabled,
                 "command": commands[-1]["command"],
                 "commands": commands,
+                "observed_airplane_mode_on": observed,
                 "message": "Airplane mode enabled." if enabled else "Airplane mode disabled.",
             }
         except Exception as exc:
@@ -325,6 +342,19 @@ class TrafficTester:
                 "error": str(exc),
                 "commands": commands,
             }
+
+    def _read_airplane_mode_state(self) -> str:
+        result = run_adb(
+            ["shell", "settings", "get", "global", "airplane_mode_on"],
+            device_id=self.device_id,
+            check=False,
+            timeout=10,
+        )
+        return (result.stdout or "").strip()
+
+    def _adb_display_command(self, script: str) -> str:
+        prefix = f"adb -s {self.device_id}" if self.device_id else "adb"
+        return f"{prefix} shell {script}"
 
     def _run_ping_app_test(self, host: str, count: int) -> str:
         if not self.device_id:
