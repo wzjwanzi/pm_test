@@ -1,6 +1,7 @@
 """Concrete adapter wrappers for existing PM integrations."""
 from __future__ import annotations
 
+import re
 import time
 from typing import Any
 
@@ -100,6 +101,11 @@ class TrafficAdapter:
             if operation in {"phone_airplane_mode_off", "phone_airplane_mode_on"}:
                 enabled = operation == "phone_airplane_mode_on"
                 data = self.tester.set_airplane_mode(enabled)
+                if not enabled and bool(data.get("success", True)):
+                    validation = self._validate_attach_has_pci()
+                    data["attach_validation"] = validation
+                    if not validation.get("success"):
+                        return _attach_validation_failure(data, validation)
                 return _result_from_mapping(data, adapter="traffic", message="Phone airplane mode updated.")
             if operation == "phone_airplane_cycle":
                 detach_wait_seconds = max(0, int(params.get("detach_wait_seconds") or 0))
@@ -108,7 +114,12 @@ class TrafficAdapter:
                 time.sleep(detach_wait_seconds)
                 attach = self.tester.set_airplane_mode(False)
                 time.sleep(attach_wait_seconds)
-                success = bool(detach.get("success", True)) and bool(attach.get("success", True))
+                validation = (
+                    self._validate_attach_has_pci()
+                    if bool(attach.get("success", True))
+                    else {"success": False, "error": "Airplane attach command failed before PCI validation."}
+                )
+                success = bool(detach.get("success", True)) and bool(attach.get("success", True)) and bool(validation.get("success"))
                 data = {
                     "success": success,
                     "operation": "phone_airplane_cycle",
@@ -116,8 +127,11 @@ class TrafficAdapter:
                     "results": [
                         {"phase": "detach", "wait_seconds": detach_wait_seconds, **detach},
                         {"phase": "attach", "wait_seconds": attach_wait_seconds, **attach},
+                        {"phase": "attach_validation", **validation},
                     ],
                 }
+                if not validation.get("success"):
+                    return _attach_validation_failure(data, validation)
                 return _result_from_mapping(data, adapter="traffic", message="Phone airplane cycle completed.")
             if operation in {"phone_uplink_iperf", "phone_uplink_iperf_start"}:
                 arguments = _phone_iperf_arguments(operation, params)
@@ -183,6 +197,30 @@ class TrafficAdapter:
 
     def cleanup_open_explicit_sessions(self) -> list[AdapterResult]:
         return [self._stop_explicit_session(key, cleanup=True) for key in list(self.explicit_sessions)]
+
+    def _validate_attach_has_pci(self) -> dict[str, Any]:
+        cell_info = NetworkMonitor(self.device_id).get_cell_info()
+        if not bool(cell_info.get("success", True)):
+            return {
+                "success": False,
+                "error": str(cell_info.get("error") or "Failed to collect cell info after attach."),
+                "cell_info": cell_info,
+            }
+        raw = str(cell_info.get("cell_info") or "")
+        pci_values = _extract_pci_values(raw)
+        if not pci_values:
+            return {
+                "success": False,
+                "error": "Phone attach validation failed: no PCI found in cell info.",
+                "cell_info": cell_info,
+                "pci_values": [],
+            }
+        return {
+            "success": True,
+            "message": f"Phone attach validation passed with PCI {', '.join(map(str, pci_values))}.",
+            "cell_info": cell_info,
+            "pci_values": pci_values,
+        }
 
     def _replace_explicit_session(self, session_key: str) -> AdapterResult | None:
         old_action = self.explicit_sessions.get(session_key)
@@ -741,6 +779,36 @@ def _phone_iperf_arguments(operation: str, params: dict[str, Any]) -> str:
         port = int(params.get("phone_uplink_port") or params.get("iperf_port") or 7011)
         return f"-u -c {target} -i 1 -t {duration} -b {bandwidth} -l {packet_len} -p {port} -P 1"
     return arguments
+
+
+def _extract_pci_values(text: str) -> list[int]:
+    values: list[int] = []
+    patterns = [
+        r"\bmPci\s*[=:]\s*(-?\d+)",
+        r"\bpci\s*[=:]\s*(-?\d+)",
+        r"\bphysicalCellId\s*[=:]\s*(-?\d+)",
+    ]
+    for pattern in patterns:
+        for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+            value = int(match.group(1))
+            if 0 <= value <= 1007 and value not in values:
+                values.append(value)
+    return values
+
+
+def _attach_validation_failure(data: dict[str, Any], validation: dict[str, Any]) -> AdapterResult:
+    message = str(validation.get("error") or "Phone attach validation failed: no PCI found.")
+    return AdapterResult(
+        success=False,
+        message=message,
+        data=data,
+        error=_error(
+            code="TRAFFIC_ATTACH_PCI_MISSING",
+            message=message,
+            adapter="traffic",
+            details=validation,
+        ),
+    )
 
 
 def _exception_result(adapter: str, exc: Exception) -> AdapterResult:

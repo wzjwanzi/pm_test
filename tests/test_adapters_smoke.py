@@ -862,7 +862,15 @@ def test_phone_airplane_mode_actions_call_tester(monkeypatch):
             calls.append(("airplane", enabled))
             return {"success": True, "enabled": enabled, "commands": [{"command": "adb shell settings"}]}
 
+    class FakeNetworkMonitor:
+        def __init__(self, device_id):
+            calls.append(("monitor", device_id))
+
+        def get_cell_info(self):
+            return {"success": True, "cell_info": "mCellInfo=[CellIdentityLte:{ mPci=123 }]"}
+
     monkeypatch.setattr("pm_tests.core.adapters.TrafficTester", FakeTrafficTester)
+    monkeypatch.setattr("pm_tests.core.adapters.NetworkMonitor", FakeNetworkMonitor)
     adapter = TrafficAdapter("device-1")
 
     off = adapter.run_step(
@@ -876,7 +884,34 @@ def test_phone_airplane_mode_actions_call_tester(monkeypatch):
     assert on.success is True
     assert off.data["enabled"] is False
     assert on.data["enabled"] is True
-    assert calls == [("init", "device-1"), ("airplane", False), ("airplane", True)]
+    assert calls == [("init", "device-1"), ("airplane", False), ("monitor", "device-1"), ("airplane", True)]
+
+
+def test_phone_airplane_mode_off_fails_when_attach_has_no_pci(monkeypatch):
+    class FakeTrafficTester:
+        def __init__(self, device_id):
+            pass
+
+        def set_airplane_mode(self, enabled):
+            return {"success": True, "enabled": enabled, "commands": [{"command": "adb shell settings"}]}
+
+    class FakeNetworkMonitor:
+        def __init__(self, device_id):
+            pass
+
+        def get_cell_info(self):
+            return {"success": True, "cell_info": "mServiceState=IN_SERVICE\nmCellInfo=[]"}
+
+    monkeypatch.setattr("pm_tests.core.adapters.TrafficTester", FakeTrafficTester)
+    monkeypatch.setattr("pm_tests.core.adapters.NetworkMonitor", FakeNetworkMonitor)
+
+    result = TrafficAdapter("device-1").run_step(
+        StepPlan("s1", "phone_airplane_mode", "traffic", action="phone_airplane_mode_off")
+    )
+
+    assert result.success is False
+    assert result.error.code == "TRAFFIC_ATTACH_PCI_MISSING"
+    assert "PCI" in result.message
 
 
 def test_phone_airplane_cycle_toggles_offline_waits_then_online(monkeypatch):
@@ -895,7 +930,15 @@ def test_phone_airplane_cycle_toggles_offline_waits_then_online(monkeypatch):
                 "commands": [{"command": f"airplane {enabled}", "stdout": "", "stderr": "", "exit_status": 0}],
             }
 
+    class FakeNetworkMonitor:
+        def __init__(self, device_id):
+            calls.append(("monitor", device_id))
+
+        def get_cell_info(self):
+            return {"success": True, "cell_info": "mCellInfo=[CellIdentityNr:{ mPci = 321 }]"}
+
     monkeypatch.setattr("pm_tests.core.adapters.TrafficTester", FakeTrafficTester)
+    monkeypatch.setattr("pm_tests.core.adapters.NetworkMonitor", FakeNetworkMonitor)
     monkeypatch.setattr("pm_tests.core.adapters.time.sleep", lambda seconds: calls.append(("sleep", seconds)))
 
     result = TrafficAdapter("device-1").run_step(
@@ -910,8 +953,49 @@ def test_phone_airplane_cycle_toggles_offline_waits_then_online(monkeypatch):
 
     assert result.success is True
     assert result.data["operation"] == "phone_airplane_cycle"
-    assert [item["phase"] for item in result.data["results"]] == ["detach", "attach"]
-    assert calls == [("init", "device-1"), ("airplane", True), ("sleep", 2), ("airplane", False), ("sleep", 3)]
+    assert [item["phase"] for item in result.data["results"]] == ["detach", "attach", "attach_validation"]
+    assert calls == [
+        ("init", "device-1"),
+        ("airplane", True),
+        ("sleep", 2),
+        ("airplane", False),
+        ("sleep", 3),
+        ("monitor", "device-1"),
+    ]
+
+
+def test_phone_airplane_cycle_fails_when_attach_has_no_pci(monkeypatch):
+    class FakeTrafficTester:
+        def __init__(self, device_id):
+            pass
+
+        def set_airplane_mode(self, enabled):
+            return {"success": True, "enabled": enabled, "commands": [{"command": f"airplane {enabled}"}]}
+
+    class FakeNetworkMonitor:
+        def __init__(self, device_id):
+            pass
+
+        def get_cell_info(self):
+            return {"success": True, "cell_info": "mServiceState=IN_SERVICE\nmCellInfo=[]"}
+
+    monkeypatch.setattr("pm_tests.core.adapters.TrafficTester", FakeTrafficTester)
+    monkeypatch.setattr("pm_tests.core.adapters.NetworkMonitor", FakeNetworkMonitor)
+    monkeypatch.setattr("pm_tests.core.adapters.time.sleep", lambda seconds: None)
+
+    result = TrafficAdapter("device-1").run_step(
+        StepPlan(
+            "s1",
+            "phone_airplane_cycle",
+            "traffic",
+            action="phone_airplane_cycle",
+            parameters={"detach_wait_seconds": 1, "attach_wait_seconds": 1},
+        )
+    )
+
+    assert result.success is False
+    assert result.error.code == "TRAFFIC_ATTACH_PCI_MISSING"
+    assert result.data["results"][-1]["phase"] == "attach_validation"
 
 
 def test_common_delay_adapter_waits_configured_seconds(monkeypatch):
