@@ -7,8 +7,6 @@ from pathlib import Path
 import sys
 from typing import Any
 
-from desktop.main import DesktopApp
-
 
 tk: Any = None
 ttk: Any = None
@@ -99,11 +97,10 @@ def main() -> None:
     logging.info("Desktop application startup. frozen=%s", getattr(sys, "frozen", False))
     try:
         _prepare_frozen_gui_environment()
-        _import_tk_modules()
-        root = tk.Tk()
-        DesktopApp(root)
+        from desktop_qt.app import main as qt_main
+
         logging.info("Desktop application entering main loop.")
-        root.mainloop()
+        qt_main()
     except Exception as exc:
         logging.exception("Desktop application startup failed.")
         try:
