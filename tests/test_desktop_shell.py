@@ -3,7 +3,7 @@ from pathlib import Path
 import tkinter as tk
 
 from desktop.case_library import CaseLibrary
-from desktop.case_models import SavedCase
+from desktop.case_models import CaseStep, SavedCase
 from desktop.controller import DesktopController
 from desktop.main import DesktopApp
 from desktop.widgets.settings import SettingsPanel
@@ -328,6 +328,90 @@ def test_start_run_can_run_same_queue_on_two_selected_devices(tmp_path):
     assert all(cases[0]["name"] == case.name for _device, cases in controller.pm_manager.created_runs)
     assert app.state.selected_run_ids == ["run-1", "run-2"]
     assert app.state.selected_run_id == "run-2"
+
+    root.destroy()
+
+
+def test_start_run_applies_per_device_traffic_overrides_and_discards_stale_commands(tmp_path):
+    root, app, controller = _build_multi_device_app(tmp_path)
+    case = SavedCase.new(
+        "dual-traffic",
+        [
+            CaseStep.new(
+                "phone_downlink_receive_start",
+                "phone downlink",
+                {"phone_downlink_listen_port": 6011, "arguments": "-u -s -i 1 -p 9999"},
+            ),
+            CaseStep.new(
+                "traffic_server_downlink_start",
+                "server downlink",
+                {
+                    "server_downlink_target": "10.6.251.1",
+                    "server_downlink_port": 6011,
+                    "command": "iperf -u -c 10.6.251.1 -p 9999",
+                },
+            ),
+            CaseStep.new(
+                "traffic_server_uplink_receive_start",
+                "server uplink receive",
+                {"server_uplink_listen_port": 7011, "command": "iperf -u -s -p 9999"},
+            ),
+            CaseStep.new(
+                "phone_uplink_iperf_start",
+                "phone uplink",
+                {
+                    "phone_uplink_target": "10.88.149.164",
+                    "phone_uplink_port": 7011,
+                    "arguments": "-u -c 10.88.149.164 -p 9999",
+                },
+            ),
+            CaseStep.new(
+                "traffic_server_down_ping_start",
+                "server ping",
+                {"ping_target": "10.6.251.1", "command": "ping 10.6.251.1 -n 5"},
+            ),
+        ],
+    )
+    controller.save_case(case)
+    app.state.add_case(case)
+    app.devices_panel.device_list.selection_clear(0, tk.END)
+    app.devices_panel.device_list.selection_set(0)
+    app.devices_panel.device_list.selection_set(1)
+    app.devices_panel._on_select()
+    app.devices_panel.run_mode_var.set(app.devices_panel.RUN_MODE_SAME)
+    controller.save_settings(
+        {
+            "traffic": {
+                "server_host": "10.88.149.164",
+                "device_overrides": {
+                    "device-1": {"phone_ip": "10.6.251.27", "downlink_port": 6011, "uplink_port": 7011},
+                    "device-2": {"phone_ip": "10.6.251.28", "downlink_port": 6012, "uplink_port": 7012},
+                },
+            }
+        }
+    )
+
+    app.start_run()
+
+    first_payload = controller.pm_manager.created_runs[0][1][0]
+    second_payload = controller.pm_manager.created_runs[1][1][0]
+    assert controller.pm_manager.created_runs[0][0] == "device-1"
+    assert controller.pm_manager.created_runs[1][0] == "device-2"
+    first_params = {step["action"]: step["params"] for step in first_payload["steps"]}
+    second_params = {step["action"]: step["params"] for step in second_payload["steps"]}
+    assert first_params["traffic_server_downlink_start"]["server_downlink_target"] == "10.6.251.27"
+    assert first_params["phone_downlink_receive_start"]["phone_downlink_listen_port"] == 6011
+    assert second_params["traffic_server_downlink_start"]["server_downlink_target"] == "10.6.251.28"
+    assert second_params["traffic_server_downlink_start"]["server_downlink_port"] == 6012
+    assert second_params["phone_downlink_receive_start"]["phone_downlink_listen_port"] == 6012
+    assert second_params["traffic_server_uplink_receive_start"]["server_uplink_listen_port"] == 7012
+    assert second_params["phone_uplink_iperf_start"]["phone_uplink_port"] == 7012
+    assert second_params["phone_uplink_iperf_start"]["phone_uplink_target"] == "10.88.149.164"
+    assert second_params["traffic_server_down_ping_start"]["ping_target"] == "10.6.251.28"
+    assert "command" not in second_params["traffic_server_downlink_start"]
+    assert "command" not in second_params["traffic_server_uplink_receive_start"]
+    assert "arguments" not in second_params["phone_uplink_iperf_start"]
+    assert "arguments" not in second_params["phone_downlink_receive_start"]
 
     root.destroy()
 

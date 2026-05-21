@@ -227,6 +227,7 @@ def test_merge_phone_module_updates_iperf_ping_and_phone_traffic_fields():
             "traffic.phone_uplink_packet_len": "1250",
             "traffic.phone_downlink_listen_port": "6013",
             "traffic.phone_ping_target": "10.88.149.223",
+            "traffic.device_overrides_json": '{"device-2":{"phone_ip":"10.6.251.28","uplink_port":7012}}',
         },
     )
 
@@ -236,6 +237,43 @@ def test_merge_phone_module_updates_iperf_ping_and_phone_traffic_fields():
     assert merged["ping"]["count"] == 6
     assert merged["traffic"]["phone_uplink_target"] == "10.88.149.222"
     assert merged["traffic"]["phone_downlink_listen_port"] == 6013
+    assert merged["traffic"]["device_overrides"]["device-2"]["phone_ip"] == "10.6.251.28"
+
+
+def test_runtime_settings_normalizes_per_device_traffic_overrides():
+    normalized = normalize_runtime_settings(
+        {
+            "traffic": {
+                "server_host": "10.88.149.164",
+                "device_overrides": {
+                    " device-1 ": {
+                        "phone_ip": "10.6.251.27",
+                        "downlink_port": "6011",
+                        "uplink_port": "7011",
+                    },
+                    "device-2": {
+                        "server_downlink_target": "10.6.251.28",
+                        "server_ping_target": "10.6.251.28",
+                        "phone_uplink_target": "10.88.149.164",
+                        "server_downlink_port": "6012",
+                        "phone_downlink_listen_port": "6012",
+                        "server_uplink_listen_port": "7012",
+                        "phone_uplink_port": "7012",
+                    },
+                },
+            }
+        }
+    )
+
+    overrides = normalized["traffic"]["device_overrides"]
+    assert overrides["device-1"]["server_downlink_target"] == "10.6.251.27"
+    assert overrides["device-1"]["server_ping_target"] == "10.6.251.27"
+    assert overrides["device-1"]["server_downlink_port"] == 6011
+    assert overrides["device-1"]["phone_downlink_listen_port"] == 6011
+    assert overrides["device-1"]["server_uplink_listen_port"] == 7011
+    assert overrides["device-1"]["phone_uplink_port"] == 7011
+    assert overrides["device-2"]["server_downlink_target"] == "10.6.251.28"
+    assert overrides["device-2"]["phone_uplink_port"] == 7012
 
 
 def test_merge_common_module_updates_delay_seconds():

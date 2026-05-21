@@ -1,6 +1,7 @@
 """Tkinter desktop application shell."""
 from __future__ import annotations
 
+import copy
 import tkinter as tk
 from tkinter import ttk
 
@@ -262,7 +263,7 @@ class DesktopApp:
                 if hasattr(case, "steps"):
                     remap_case_params_from_settings(case, settings)
                     self.controller.save_case(case)
-            runs = self._create_runs_for_mode(devices)
+            runs = self._create_runs_for_mode(devices, settings)
             if not runs:
                 self.set_message("没有可创建的任务")
                 return
@@ -288,7 +289,7 @@ class DesktopApp:
         self.set_message("请先选择或加入用例")
         return False
 
-    def _create_runs_for_mode(self, devices: list[str]) -> list[dict]:
+    def _create_runs_for_mode(self, devices: list[str], settings: dict) -> list[dict]:
         mode = self.devices_panel.run_mode_var.get()
         if mode == self.devices_panel.RUN_MODE_BY_CASE:
             grouped: dict[str, list] = {}
@@ -296,12 +297,61 @@ class DesktopApp:
                 assigned = self.state.case_devices(case) or devices
                 for device_id in assigned:
                     grouped.setdefault(device_id, []).append(case)
-            return [self._create_single_run(device_id, cases) for device_id, cases in grouped.items()]
-        return [self._create_single_run(device_id, self.state.case_queue) for device_id in devices]
+            return [self._create_single_run(device_id, cases, settings) for device_id, cases in grouped.items()]
+        return [self._create_single_run(device_id, self.state.case_queue, settings) for device_id in devices]
 
-    def _create_single_run(self, device_id: str, cases) -> dict:
-        result = self.controller.create_run(device_id, cases)
+    def _create_single_run(self, device_id: str, cases, settings: dict) -> dict:
+        run_cases = [self._case_payload_for_device(case, device_id, settings) for case in cases]
+        result = self.controller.create_run(device_id, run_cases)
         return result.get("run", result)
+
+    def _case_payload_for_device(self, case, device_id: str, settings: dict) -> dict:
+        payload = copy.deepcopy(self.controller.case_to_run_payload(case))
+        overrides = ((settings.get("traffic") or {}).get("device_overrides") or {})
+        override = overrides.get(device_id) or {}
+        if not override:
+            return payload
+        for step in payload.get("steps") or []:
+            params = step.setdefault("params", {})
+            action = step.get("action")
+            self._apply_traffic_override_to_step(action, params, override)
+        return payload
+
+    def _apply_traffic_override_to_step(self, action: str, params: dict, override: dict) -> None:
+        if action == "traffic_server_downlink_start":
+            self._copy_override(params, override, "server_downlink_target")
+            self._copy_override(params, override, "server_downlink_port")
+            self._copy_override(params, override, "server_downlink_bandwidth")
+            self._copy_override(params, override, "server_downlink_duration")
+            self._copy_override(params, override, "server_downlink_packet_len")
+            params.pop("command", None)
+        elif action == "phone_downlink_receive_start":
+            self._copy_override(params, override, "phone_downlink_listen_port")
+            params.pop("arguments", None)
+        elif action == "traffic_server_uplink_receive_start":
+            self._copy_override(params, override, "server_uplink_listen_port")
+            params.pop("command", None)
+        elif action == "phone_uplink_iperf_start":
+            self._copy_override(params, override, "phone_uplink_target")
+            self._copy_override(params, override, "phone_uplink_port")
+            self._copy_override(params, override, "phone_uplink_bandwidth")
+            self._copy_override(params, override, "phone_uplink_duration")
+            self._copy_override(params, override, "phone_uplink_packet_len")
+            params.pop("arguments", None)
+        elif action == "traffic_server_down_ping_start":
+            ping_target = override.get("ping_target") or override.get("server_ping_target")
+            if ping_target is not None:
+                params["ping_target"] = ping_target
+            self._copy_override(params, override, "server_ping_count", target_key="ping_count")
+            params.pop("command", None)
+        elif action == "phone_ping":
+            phone_ping_target = override.get("phone_ping_target")
+            if phone_ping_target is not None:
+                params["host"] = phone_ping_target
+
+    def _copy_override(self, params: dict, override: dict, key: str, *, target_key: str | None = None) -> None:
+        if key in override:
+            params[target_key or key] = override[key]
 
     def stop_run(self) -> None:
         run_ids = self.state.selected_run_ids or ([self.state.selected_run_id] if self.state.selected_run_id else [])

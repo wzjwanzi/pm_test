@@ -149,6 +149,7 @@ def normalize_runtime_settings(settings: dict) -> dict:
     traffic["phone_uplink_packet_len"] = int(traffic.get("phone_uplink_packet_len") or 1350)
     traffic["phone_downlink_listen_port"] = int(traffic.get("phone_downlink_listen_port") or 6011)
     traffic["phone_ping_target"] = str(traffic.get("phone_ping_target") or "").strip()
+    traffic["device_overrides"] = _normalize_traffic_device_overrides(traffic.get("device_overrides"), traffic)
 
     common = merged["common"]
     common["delay_seconds"] = max(int(common.get("delay_seconds") or 5), 0)
@@ -183,6 +184,80 @@ def _build_base_web_capture_select_msg(base_web: dict) -> str:
     if base_web.get("capture_data_enabled"):
         parts.append("UP")
     return ",".join(parts) or "CP"
+
+
+def _normalize_traffic_device_overrides(raw_overrides, traffic: dict) -> dict:
+    if isinstance(raw_overrides, str):
+        try:
+            raw_overrides = json.loads(raw_overrides)
+        except json.JSONDecodeError:
+            raw_overrides = {}
+    if not isinstance(raw_overrides, dict):
+        return {}
+
+    normalized: dict[str, dict] = {}
+    for raw_device_id, raw_values in raw_overrides.items():
+        device_id = str(raw_device_id or "").strip()
+        if not device_id or not isinstance(raw_values, dict):
+            continue
+        values = _normalize_one_traffic_device_override(raw_values, traffic)
+        if values:
+            normalized[device_id] = values
+    return normalized
+
+
+def _normalize_one_traffic_device_override(raw_values: dict, traffic: dict) -> dict:
+    values = dict(raw_values)
+    normalized: dict[str, object] = {}
+
+    phone_ip = str(values.get("phone_ip") or "").strip()
+    if phone_ip:
+        normalized["phone_ip"] = phone_ip
+        normalized["server_downlink_target"] = phone_ip
+        normalized["server_ping_target"] = phone_ip
+        normalized["ping_target"] = phone_ip
+    for source, targets in (
+        ("downlink_port", ("server_downlink_port", "phone_downlink_listen_port")),
+        ("uplink_port", ("server_uplink_listen_port", "phone_uplink_port")),
+    ):
+        if source in values and str(values.get(source)).strip() != "":
+            port = int(values[source])
+            normalized[source] = port
+            for target in targets:
+                normalized[target] = port
+    traffic_server_ip = str(values.get("traffic_server_ip") or "").strip()
+    if traffic_server_ip:
+        normalized["traffic_server_ip"] = traffic_server_ip
+        normalized["phone_uplink_target"] = traffic_server_ip
+        normalized["phone_ping_target"] = traffic_server_ip
+
+    for key in (
+        "server_downlink_target",
+        "server_ping_target",
+        "ping_target",
+        "phone_uplink_target",
+        "phone_ping_target",
+    ):
+        if key in values:
+            normalized[key] = str(values.get(key) or "").strip()
+    for key in (
+        "server_downlink_port",
+        "phone_downlink_listen_port",
+        "server_uplink_listen_port",
+        "phone_uplink_port",
+        "server_ping_count",
+        "phone_uplink_duration",
+        "phone_uplink_packet_len",
+    ):
+        if key in values and str(values.get(key)).strip() != "":
+            normalized[key] = int(values[key])
+    for key in ("phone_uplink_bandwidth", "server_downlink_bandwidth", "server_downlink_duration", "server_downlink_packet_len"):
+        if key in values:
+            default = traffic.get(key) if isinstance(traffic, dict) else ""
+            normalized[key] = str(values.get(key) or default or "").strip()
+    if "phone_uplink_target" not in normalized and traffic.get("server_host"):
+        normalized["phone_uplink_target"] = str(traffic.get("server_host") or "").strip()
+    return normalized
 
 
 def get_iperf_settings() -> dict:

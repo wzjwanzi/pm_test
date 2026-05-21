@@ -45,7 +45,7 @@ class DesktopController:
         return list(self.pm_manager.get_templates())
 
     def create_run(self, device_id: str, cases) -> dict:
-        run_cases = [self._case_to_run_payload(item) for item in cases]
+        run_cases = [self.case_to_run_payload(item) for item in cases]
         return self.pm_manager.create_run(device_id, run_cases)
 
     def list_saved_cases(self):
@@ -109,7 +109,7 @@ class DesktopController:
     def reset_settings(self) -> dict:
         return reset_runtime_settings()
 
-    def _case_to_run_payload(self, item) -> dict:
+    def case_to_run_payload(self, item) -> dict:
         if hasattr(item, "to_legacy_case"):
             return item.to_legacy_case()
         if hasattr(item, "to_dict"):

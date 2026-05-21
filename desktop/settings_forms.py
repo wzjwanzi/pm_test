@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -88,6 +89,7 @@ MODULE_FIELDS: dict[str, tuple[SettingsField, ...]] = {
         SettingsField("traffic.phone_uplink_packet_len", "手机上行包长", "int"),
         SettingsField("traffic.phone_downlink_listen_port", "手机下载监听端口", "int"),
         SettingsField("traffic.phone_ping_target", "手机 Ping 目标"),
+        SettingsField("traffic.device_overrides_json", "多设备参数 JSON", "json"),
     ),
     "common": (
         SettingsField("delay_seconds", "延时秒数", "int"),
@@ -106,7 +108,7 @@ def extract_business_modules(settings: dict[str, Any]) -> dict[str, dict[str, An
             for field in MODULE_FIELDS["traffic_server"]
         },
         "phone": {
-            field.key: _get_nested_value(settings, field.key)
+            field.key: _get_phone_module_value(settings, field.key)
             for field in MODULE_FIELDS["phone"]
         },
         "common": dict(settings.get("common") or {}),
@@ -130,6 +132,9 @@ def merge_business_module(
         merged.setdefault("traffic", {}).update(parsed)
     elif module == "phone":
         for key, value in parsed.items():
+            if key == "traffic.device_overrides_json":
+                merged.setdefault("traffic", {})["device_overrides"] = value
+                continue
             group, name = key.split(".", 1)
             merged.setdefault(group, {})[name] = value
     elif module == "common":
@@ -161,9 +166,20 @@ def _parse_values(module: str, values: dict[str, Any]) -> dict[str, Any]:
             parsed[key] = _parse_bool(field, value)
         elif field.kind == "choice":
             parsed[key] = _parse_choice(field, value)
+        elif field.kind == "json":
+            parsed[key] = _parse_json(field, value)
         else:
             parsed[key] = "" if value is None else str(value)
     return parsed
+
+
+def _get_phone_module_value(settings: dict[str, Any], dotted_key: str) -> Any:
+    if dotted_key == "traffic.device_overrides_json":
+        overrides = (settings.get("traffic") or {}).get("device_overrides") or {}
+        if not overrides:
+            return ""
+        return json.dumps(overrides, ensure_ascii=False, indent=2)
+    return _get_nested_value(settings, dotted_key)
 
 
 def _get_nested_value(settings: dict[str, Any], dotted_key: str) -> Any:
@@ -199,3 +215,18 @@ def _parse_bool(field: SettingsField, value: Any) -> bool:
             return False
         raise SettingsValidationError(f"{field.label} ({field.key}) must be a boolean")
     return bool(value)
+
+
+def _parse_json(field: SettingsField, value: Any) -> dict:
+    if isinstance(value, dict):
+        return value
+    text = "" if value is None else str(value).strip()
+    if not text:
+        return {}
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise SettingsValidationError(f"{field.label} ({field.key}) must be valid JSON") from exc
+    if not isinstance(parsed, dict):
+        raise SettingsValidationError(f"{field.label} ({field.key}) must be a JSON object")
+    return parsed

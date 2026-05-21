@@ -131,6 +131,7 @@ DEFAULT_RUNTIME_SETTINGS = {
         "phone_uplink_packet_len": 1350,
         "phone_downlink_listen_port": 6011,
         "phone_ping_target": "10.88.149.164",
+        "device_overrides": {},
     },
 }
 
