@@ -116,3 +116,20 @@ def test_clicking_case_step_edits_that_step_local_parameters():
     assert case.steps[-1].params["iperf_bandwidth"] == "300m"
     assert case.steps[-1].params["command"].find("-b 300m") >= 0
     window.close()
+
+
+def test_delete_selected_step_removes_operation_from_case():
+    QApplication.instance() or QApplication([])
+    window = MainWindow(controller=FakeController(), start_polling=False)
+    page = window.case_library_page
+    page.select_operation("traffic_server_downlink_start")
+    page.add_operation_to_case()
+    case = page.selected_case()
+    before = len(case.steps)
+
+    page.step_list.setCurrentRow(page.step_list.count() - 1)
+    page.delete_selected_step()
+
+    assert len(case.steps) == before - 1
+    assert page.step_list.count() == len(case.steps)
+    window.close()

@@ -37,9 +37,11 @@ class CaseLibraryPage(QWidget):
         self.step_list = QListWidget()
         self.parameter_form = QFormLayout()
         self.save_step_button = QPushButton("保存参数")
+        self.delete_step_button = QPushButton("删除操作")
         right.addWidget(self.step_list)
         right.addLayout(self.parameter_form)
         right.addWidget(self.save_step_button)
+        right.addWidget(self.delete_step_button)
 
         layout.addLayout(left, 1)
         layout.addLayout(middle, 1)
@@ -50,6 +52,7 @@ class CaseLibraryPage(QWidget):
         self.operation_list.currentRowChanged.connect(self.render_selected_operation)
         self.add_operation_button.clicked.connect(self.add_operation_to_case)
         self.save_step_button.clicked.connect(self.save_selected_step_parameters)
+        self.delete_step_button.clicked.connect(self.delete_selected_step)
         self.add_to_run_button.clicked.connect(self.add_selected_to_run)
         self.load_cases()
         self.load_operations()
@@ -138,6 +141,20 @@ class CaseLibraryPage(QWidget):
         self._save_case_if_supported(case)
         self.render_selected_case()
         self.step_list.setCurrentRow(self._editing_step_index)
+
+    def delete_selected_step(self) -> None:
+        case = self.selected_case()
+        row = self.step_list.currentRow()
+        if case is None or not (0 <= row < len(case.steps)):
+            return
+        case.steps.pop(row)
+        self._editing_step_index = None
+        self._save_case_if_supported(case)
+        self.render_selected_case()
+        if case.steps:
+            self.step_list.setCurrentRow(min(row, len(case.steps) - 1))
+        else:
+            self._clear_parameters()
 
     def add_selected_to_run(self) -> None:
         case = self.selected_case()
