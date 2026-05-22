@@ -86,6 +86,11 @@ SERVER_IPERF_FIELDS = [
     {"name": "iperf_duration", "label": "时长", "type": "int"},
 ]
 
+SERVER_RECEIVE_FIELDS = [
+    *SERVER_CONNECTION_FIELDS,
+    {"name": "server_uplink_listen_port", "label": "监听端口", "type": "int"},
+]
+
 SERVER_PING_FIELDS = [
     *SERVER_CONNECTION_FIELDS,
     {"name": "ping_target", "label": "Ping 目标", "type": "text"},
@@ -108,6 +113,10 @@ PHONE_IPERF_FIELDS = [
     {"name": "iperf_port", "label": "端口", "type": "int"},
     {"name": "iperf_bandwidth", "label": "带宽", "type": "text"},
     {"name": "iperf_duration", "label": "时长", "type": "int"},
+]
+
+PHONE_RECEIVE_FIELDS = [
+    {"name": "phone_downlink_listen_port", "label": "监听端口", "type": "int"},
 ]
 
 PHONE_PING_FIELDS = [
@@ -291,10 +300,10 @@ ACTIONS = [
     ActionTemplate("traffic_server_downlink_stop", "停止下行灌包", "灌包服务器", SERVER_STOP_FIELDS),
     ActionTemplate("traffic_server_down_ping_start", "开始下行 ping", "灌包服务器", SERVER_PING_FIELDS),
     ActionTemplate("traffic_server_down_ping_stop", "停止下行 ping", "灌包服务器", SERVER_STOP_FIELDS),
-    ActionTemplate("traffic_server_uplink_receive_start", "开始上行接收", "灌包服务器", SERVER_IPERF_FIELDS),
+    ActionTemplate("traffic_server_uplink_receive_start", "开始上行接收", "灌包服务器", SERVER_RECEIVE_FIELDS),
     ActionTemplate("traffic_server_uplink_receive_stop", "停止上行接收", "灌包服务器", SERVER_STOP_FIELDS),
-    ActionTemplate("phone_downlink_receive_start", "开始下行接收", "手机", PHONE_IPERF_FIELDS),
-    ActionTemplate("phone_downlink_receive_stop", "停止下行接收", "手机", PHONE_IPERF_FIELDS),
+    ActionTemplate("phone_downlink_receive_start", "开始下行接收", "手机", PHONE_RECEIVE_FIELDS),
+    ActionTemplate("phone_downlink_receive_stop", "停止下行接收", "手机", PHONE_RECEIVE_FIELDS),
     ActionTemplate("phone_uplink_iperf_start", "开始上行灌包", "手机", PHONE_IPERF_FIELDS),
     ActionTemplate("phone_uplink_iperf_stop", "停止上行灌包", "手机", PHONE_IPERF_FIELDS),
     ActionTemplate("phone_ping", "手机 ping", "手机", PHONE_PING_FIELDS),

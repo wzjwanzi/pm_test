@@ -37,6 +37,20 @@ class FakeController:
                 "fields": [{"name": "command", "label": "SSH 命令", "type": "text"}],
                 "defaults": {},
             },
+            {
+                "action": "traffic_server_uplink_receive_start",
+                "label": "开始上行接收",
+                "group": "灌包服务器",
+                "fields": [{"name": "iperf_port", "label": "端口", "type": "int"}],
+                "defaults": {},
+            },
+            {
+                "action": "phone_downlink_receive_start",
+                "label": "开始下行接收",
+                "group": "手机",
+                "fields": [{"name": "iperf_port", "label": "端口", "type": "int"}],
+                "defaults": {},
+            },
         ]
 
     def load_settings(self):
@@ -77,7 +91,7 @@ def test_case_library_has_operation_library_grouped_by_business_area():
 
     assert "灌包服务器" in groups
     assert "基站 SSH" in groups
-    assert window.case_library_page.operation_list.count() == 2
+    assert window.case_library_page.operation_list.count() == 4
     window.close()
 
 
@@ -132,4 +146,19 @@ def test_delete_selected_step_removes_operation_from_case():
 
     assert len(case.steps) == before - 1
     assert page.step_list.count() == len(case.steps)
+    window.close()
+
+
+def test_receive_operations_do_not_show_bandwidth_parameters():
+    QApplication.instance() or QApplication([])
+    window = MainWindow(controller=FakeController(), start_polling=False)
+    page = window.case_library_page
+
+    page.select_operation("traffic_server_uplink_receive_start")
+    assert "iperf_bandwidth" not in page.parameter_widgets
+    assert "iperf_duration" not in page.parameter_widgets
+
+    page.select_operation("phone_downlink_receive_start")
+    assert "iperf_bandwidth" not in page.parameter_widgets
+    assert "iperf_duration" not in page.parameter_widgets
     window.close()

@@ -238,6 +238,8 @@ def test_traffic_server_iperf_steps_include_generated_commands():
         "iperf -u -c 10.6.251.27 -i 1 -t 60000 -b 250m -l 1350 -p 6011 -P 1"
     )
     assert uplink_receive.params["command"] == "iperf -u -s -i 1 -p 7011"
+    assert "iperf_bandwidth" not in uplink_receive.params
+    assert "iperf_duration" not in uplink_receive.params
 
 
 def test_phone_iperf_steps_include_generated_arguments():
@@ -257,6 +259,8 @@ def test_phone_iperf_steps_include_generated_arguments():
 
     assert downlink_receive.params["arguments"] == "-u -s -i 1 -p 6011"
     assert downlink_receive.params["command"] == "adb shell /data/local/tmp/iperf -u -s -i 1 -p 6011"
+    assert "iperf_bandwidth" not in downlink_receive.params
+    assert "iperf_duration" not in downlink_receive.params
     assert uplink.params["arguments"] == (
         "-u -c 10.88.149.164 -i 1 -t 6000 -b 120m -l 1350 -p 7011 -P 1"
     )
