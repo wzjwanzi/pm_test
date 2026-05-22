@@ -29,6 +29,7 @@ class FakeController:
     def __init__(self, settings):
         self.settings = settings
         self.created = None
+        self.run_detail = None
 
     def refresh_devices(self):
         return ["device-1"]
@@ -41,6 +42,9 @@ class FakeController:
 
     def list_runs(self, limit=20):
         return []
+
+    def get_run(self, run_id):
+        return self.run_detail
 
     def case_to_run_payload(self, item):
         return item.to_dict()
@@ -73,4 +77,37 @@ def test_home_creates_run_when_readiness_passes():
     assert controller.created[0] == "device-1"
     assert controller.created[1][0]["name"] == "下行灌包"
     assert window.state.selected_run_id == "run-1"
+    window.close()
+
+
+def test_home_poll_renders_selected_run_detail_to_live_log():
+    QApplication.instance() or QApplication([])
+    controller = FakeController(_settings())
+    controller.run_detail = {
+        "run_id": "run-1",
+        "device_id": "device-1",
+        "status": "running",
+        "summary": {"passed": 0, "total": 1},
+        "case_records": [
+            {
+                "name": "case",
+                "step_records": [
+                    {
+                        "step_id": "ssh-1",
+                        "kind": "base_ssh_command_once",
+                        "status": "passed",
+                        "data": {"command": "odi show", "stdout": "ok output"},
+                    }
+                ],
+            }
+        ],
+    }
+    window = MainWindow(controller=controller, start_polling=False)
+    window.state.selected_run_id = "run-1"
+
+    window.refresh_runs()
+
+    text = window.home_page.live_output.toPlainText()
+    assert "odi show" in text
+    assert "ok output" in text
     window.close()

@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from desktop.case_models import SavedCase
+from desktop.formatters import format_run_console
 from desktop_qt.preflight import Severity, evaluate_case_readiness
 
 
@@ -114,6 +115,11 @@ class HomePage(QWidget):
         run = run_result.get("run", {}) if isinstance(run_result, dict) else {}
         self.window.state.selected_run_id = str(run.get("run_id") or "")
         self.live_output.append(f"开始运行: {self.window.state.selected_run_id}")
+
+    def render_run(self, run: dict[str, Any] | None) -> None:
+        if not run:
+            return
+        self.live_output.setPlainText(format_run_console(run))
 
     def selected_case(self):
         row = self.case_list.currentRow()

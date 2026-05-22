@@ -58,3 +58,10 @@ class MainWindow(QMainWindow):
 
     def refresh_runs(self) -> None:
         self.controller.list_runs(limit=20)
+        run_id = self.state.selected_run_id
+        if not run_id or not hasattr(self.controller, "get_run"):
+            return
+        run = self.controller.get_run(run_id)
+        self.state.latest_run = run
+        self.home_page.render_run(run)
+        self.results_page.render_run(run)
