@@ -368,6 +368,49 @@ def test_async_run_updates_store_after_each_step_for_realtime_ui(tmp_path):
     port.release_second_step.set()
 
 
+def test_async_run_reports_current_running_step_before_it_finishes(tmp_path):
+    port = BlockingPort()
+    plan = RunPlan(
+        run_id="run-current-step",
+        device_id="device-1",
+        case_plans=[
+            CasePlan(
+                case_id="case-1",
+                name="case",
+                step_plans=[
+                    StepPlan(step_id="first", kind="noop", adapter="block"),
+                    StepPlan(step_id="second", kind="noop", adapter="block"),
+                ],
+            )
+        ],
+    )
+    orchestrator = RunOrchestrator(
+        artifacts_root=tmp_path,
+        adapters={"block": port},
+        run_async=True,
+    )
+
+    orchestrator.create_run(plan)
+    assert port.first_step_finished.wait(timeout=5)
+    deadline = time.time() + 5
+    live_record = None
+    while time.time() < deadline:
+        live_record = orchestrator.get_run("run-current-step")
+        steps = live_record.case_records[0].step_records if live_record and live_record.case_records else []
+        if len(steps) == 2 and steps[1].status == Status.RUNNING:
+            break
+        time.sleep(0.05)
+
+    assert live_record is not None
+    steps = live_record.case_records[0].step_records
+    assert steps[0].step_id == "first"
+    assert steps[0].status == Status.PASSED
+    assert steps[1].step_id == "second"
+    assert steps[1].status == Status.RUNNING
+
+    port.release_second_step.set()
+
+
 def test_orchestrator_externalizes_large_step_payloads(tmp_path):
     plan = RunPlan(
         run_id="run-large",

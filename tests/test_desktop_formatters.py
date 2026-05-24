@@ -88,6 +88,26 @@ def test_format_run_console_shows_progress_command_output_and_artifacts():
     assert r"产物: D:\test\autopm_system\log\a.pcap" in text
 
 
+def test_format_run_console_uses_planned_step_count_while_running():
+    run = {
+        "case_records": [
+            {
+                "name": "双向灌包",
+                "metadata": {"steps": [{"action": f"step_{index}"} for index in range(17)]},
+                "step_records": [
+                    {"step_id": f"s{index}", "kind": "common_delay", "status": "passed", "data": {}}
+                    for index in range(4)
+                ],
+            }
+        ],
+    }
+
+    text = format_run_console(run)
+
+    assert "[4/17] 双向灌包 - s3" in text
+    assert "操作: common_delay" in text
+
+
 def test_format_run_console_uses_legacy_results_steps():
     run = {
         "run_id": "run-1",

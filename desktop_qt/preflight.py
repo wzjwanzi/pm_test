@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from desktop.case_operations import apply_device_overrides_to_payload, case_to_run_payload
+
 
 class Severity(str, Enum):
     OK = "ok"
@@ -61,12 +63,24 @@ def evaluate_case_readiness(
         traffic = settings.get("traffic", {})
         _add_required(items, "灌包服务器", "服务器地址", traffic.get("server_host"), "缺少灌包服务器地址")
         _add_required(items, "灌包服务器", "服务器密码", traffic.get("server_password"), "缺少灌包服务器密码")
+        payload = _payload_for_readiness(case, settings, selected_devices)
         if _needs_downlink(actions):
-            _add_required(items, "灌包服务器", "下行目标 IP", traffic.get("server_downlink_target"), "下行灌包缺少服务器下行目标 IP")
+            _add_required(
+                items,
+                "灌包服务器",
+                "下行目标 IP",
+                _step_param(payload, "traffic_server_downlink_start", "server_downlink_target"),
+                "下行灌包缺少服务器下行目标 IP",
+            )
         if _needs_uplink(actions):
-            _add_required(items, "灌包服务器", "上行目标 IP", traffic.get("phone_uplink_target"), "上行灌包缺少手机上行目标 IP")
-    if run_mode == "dual":
-        _add_dual_mapping_items(items, settings.get("traffic", {}), selected_devices)
+            _add_required(
+                items,
+                "灌包服务器",
+                "上行目标 IP",
+                _step_param(payload, "phone_uplink_iperf_start", "phone_uplink_target"),
+                "上行灌包缺少手机上行目标 IP",
+            )
+    _add_device_mapping_items(items, settings.get("traffic", {}), selected_devices, required=run_mode == "dual")
 
     groups = _group_items(items)
     blocking = [item.message for item in items if item.required and item.severity == Severity.ERROR]
@@ -86,6 +100,23 @@ def _case_actions(case: Any) -> set[str]:
         if action:
             actions.add(str(action))
     return actions
+
+
+def _payload_for_readiness(case: Any, settings: dict[str, Any], selected_devices: list[str]) -> dict:
+    try:
+        payload = case_to_run_payload(case, settings)
+    except Exception:
+        payload = case.to_dict() if hasattr(case, "to_dict") else dict(case or {})
+    if selected_devices:
+        payload = apply_device_overrides_to_payload(payload, settings, selected_devices[0])
+    return payload
+
+
+def _step_param(payload: dict, action: str, name: str) -> Any:
+    for step in payload.get("steps") or []:
+        if step.get("action") == action:
+            return (step.get("params") or {}).get(name)
+    return None
 
 
 def _needs_web(actions: set[str]) -> bool:
@@ -112,12 +143,13 @@ def _needs_uplink(actions: set[str]) -> bool:
 
 def _add_device_items(items: list[ReadinessItem], selected_devices: list[str], preflight: dict[str, Any]) -> None:
     if selected_devices:
-        items.append(ReadinessItem("手机端", "已选择设备", Severity.OK, f"已选择 {len(selected_devices)} 台设备"))
+        device_text = ", ".join(selected_devices)
+        items.append(ReadinessItem("手机端", "已选择设备", Severity.OK, f"已选择 {len(selected_devices)} 台设备: {device_text}"))
     else:
         items.append(ReadinessItem("手机端", "已选择设备", Severity.ERROR, "未选择手机设备"))
 
     if preflight.get("adb_ok", True):
-        items.append(ReadinessItem("手机端", "ADB", Severity.OK, "ADB 正常"))
+        items.append(ReadinessItem("手机端", "ADB", Severity.OK, "ADB 可用"))
     else:
         items.append(ReadinessItem("手机端", "ADB", Severity.ERROR, "ADB 不可用"))
 
@@ -127,6 +159,45 @@ def _add_required(items: list[ReadinessItem], group: str, label: str, value: Any
         items.append(ReadinessItem(group, label, Severity.OK, "已配置"))
     else:
         items.append(ReadinessItem(group, label, Severity.ERROR, missing_message))
+
+
+def _add_device_mapping_items(
+    items: list[ReadinessItem],
+    traffic: dict[str, Any],
+    selected_devices: list[str],
+    *,
+    required: bool,
+) -> None:
+    if required:
+        _add_dual_mapping_items(items, traffic, selected_devices)
+        return
+
+    overrides = traffic.get("device_overrides") or {}
+    for device_id in selected_devices:
+        values = overrides.get(device_id) or {}
+        phone_ip = str(values.get("phone_ip") or values.get("server_downlink_target") or "").strip()
+        if phone_ip:
+            items.append(
+                ReadinessItem(
+                    "Device Mapping",
+                    device_id,
+                    Severity.OK,
+                    _device_mapping_message(device_id, values),
+                    required=False,
+                )
+            )
+
+
+def _device_mapping_message(device_id: str, values: dict[str, Any]) -> str:
+    phone_ip = values.get("phone_ip") or values.get("server_downlink_target") or ""
+    downlink_port = values.get("downlink_port") or values.get("server_downlink_port") or values.get("phone_downlink_listen_port") or ""
+    uplink_port = values.get("uplink_port") or values.get("server_uplink_listen_port") or values.get("phone_uplink_port") or ""
+    parts = [f"{device_id} -> phone_ip {phone_ip}"]
+    if downlink_port != "":
+        parts.append(f"downlink_port {downlink_port}")
+    if uplink_port != "":
+        parts.append(f"uplink_port {uplink_port}")
+    return ", ".join(parts)
 
 
 def _add_dual_mapping_items(items: list[ReadinessItem], traffic: dict[str, Any], selected_devices: list[str]) -> None:
@@ -143,8 +214,11 @@ def _add_dual_mapping_items(items: list[ReadinessItem], traffic: dict[str, Any],
 
 def _group_items(items: list[ReadinessItem]) -> list[ReadinessGroup]:
     order = ["手机端", "基站 Web", "基站 SSH", "灌包服务器", "多设备映射"]
-    return [
+    groups = [
         ReadinessGroup(name, [item for item in items if item.group == name])
         for name in order
         if any(item.group == name for item in items)
     ]
+    for name in dict.fromkeys(item.group for item in items if item.group not in order):
+        groups.append(ReadinessGroup(name, [item for item in items if item.group == name]))
+    return groups

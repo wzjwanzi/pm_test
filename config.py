@@ -12,6 +12,7 @@ else:
 # Runtime data
 RUNTIME_DATA_DIR = BASE_DIR
 SETTINGS_FILE = RUNTIME_DATA_DIR / 'settings.json'
+BUILTIN_CONFIG_TEMPLATE_FILE = RUNTIME_DATA_DIR / 'mobile_platform_config.json'
 CASES_DIR = RUNTIME_DATA_DIR / 'cases'
 
 # 网络代理配置
@@ -59,6 +60,7 @@ DEVICE_IPERF3_LOG = '/sdcard/iperf3_uplink.log'
 DEVICE_IPERF3_STATUS_TAIL_LINES = 20
 DEVICE_IPERF_BINARY = '/data/local/tmp/iperf'
 DEVICE_IPERF_LOG = '/sdcard/iperf_uplink.log'
+TRAFFIC_SERVER_PHONE_TARGET = '10.88.149.164'
 
 DEFAULT_RUNTIME_SETTINGS = {
     "base_web": {
@@ -72,7 +74,7 @@ DEFAULT_RUNTIME_SETTINGS = {
         "capture_download_dir": r"D:\test\autopm_system\log",
         "capture_signal_enabled": True,
         "capture_data_enabled": False,
-        "capture_fapi_interface": "FAPI1",
+        "capture_fapi_interface": "无",
     },
     "ssh": {
         "host": "192.168.13.236",
@@ -110,28 +112,58 @@ DEFAULT_RUNTIME_SETTINGS = {
         "protocol": "udp",
     },
     "traffic": {
-        "server_host": "10.88.149.164",
+        "server_host": "192.168.13.164",
         "server_port": 22,
         "server_username": "root",
         "server_password": "Root@164_",
         "server_connect_timeout": 20,
         "server_log_dir": r"D:\test\autopm_system\log",
-        "server_downlink_target": "10.6.251.27",
-        "server_downlink_port": 6011,
-        "server_downlink_bandwidth": "250m",
-        "server_downlink_duration": 60000,
-        "server_downlink_packet_len": 1300,
-        "server_uplink_listen_port": 7011,
-        "server_ping_target": "10.6.251.27",
-        "server_ping_count": 5,
-        "phone_uplink_target": "10.88.149.164",
-        "phone_uplink_port": 7011,
-        "phone_uplink_bandwidth": "120m",
-        "phone_uplink_duration": 6000,
-        "phone_uplink_packet_len": 1350,
-        "phone_downlink_listen_port": 6011,
-        "phone_ping_target": "10.88.149.164",
-        "device_overrides": {},
+        "device_overrides": {
+            "MKBUT20605024486": {
+                "phone_ip": "10.6.251.27",
+                "server_downlink_target": "10.6.251.27",
+                "server_ping_target": "10.6.251.27",
+                "ping_target": "10.6.251.27",
+                "downlink_port": 6011,
+                "server_downlink_port": 6011,
+                "phone_downlink_listen_port": 6011,
+                "uplink_port": 7011,
+                "server_uplink_listen_port": 7011,
+                "phone_uplink_port": 7011,
+                "traffic_server_ip": TRAFFIC_SERVER_PHONE_TARGET,
+                "phone_uplink_target": TRAFFIC_SERVER_PHONE_TARGET,
+                "phone_ping_target": TRAFFIC_SERVER_PHONE_TARGET,
+                "server_downlink_bandwidth": "250m",
+                "server_downlink_duration": 60000,
+                "server_downlink_packet_len": 1300,
+                "phone_uplink_bandwidth": "120m",
+                "phone_uplink_duration": 6000,
+                "phone_uplink_packet_len": 1350,
+                "server_ping_count": 5,
+            },
+            "MKBUT20508005446": {
+                "phone_ip": "10.6.251.20",
+                "server_downlink_target": "10.6.251.20",
+                "server_ping_target": "10.6.251.20",
+                "ping_target": "10.6.251.20",
+                "downlink_port": 6012,
+                "server_downlink_port": 6012,
+                "phone_downlink_listen_port": 6012,
+                "uplink_port": 7012,
+                "server_uplink_listen_port": 7012,
+                "phone_uplink_port": 7012,
+                "traffic_server_ip": TRAFFIC_SERVER_PHONE_TARGET,
+                "phone_uplink_target": TRAFFIC_SERVER_PHONE_TARGET,
+                "phone_ping_target": TRAFFIC_SERVER_PHONE_TARGET,
+                "server_downlink_bandwidth": "250m",
+                "server_downlink_duration": 60000,
+                "server_downlink_packet_len": 1300,
+                "phone_uplink_bandwidth": "120m",
+                "phone_uplink_duration": 6000,
+                "phone_uplink_packet_len": 1350,
+                "server_ping_count": 5,
+            },
+        },
     },
 }
 

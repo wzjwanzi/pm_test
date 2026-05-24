@@ -8,6 +8,25 @@ from pathlib import Path
 import config
 
 
+DEVICE_SCOPED_TRAFFIC_KEYS = {
+    "server_downlink_target",
+    "server_downlink_port",
+    "server_downlink_bandwidth",
+    "server_downlink_duration",
+    "server_downlink_packet_len",
+    "server_uplink_listen_port",
+    "server_ping_target",
+    "server_ping_count",
+    "phone_uplink_target",
+    "phone_uplink_port",
+    "phone_uplink_bandwidth",
+    "phone_uplink_duration",
+    "phone_uplink_packet_len",
+    "phone_downlink_listen_port",
+    "phone_ping_target",
+}
+
+
 def _deep_merge(defaults: dict, overrides: dict) -> dict:
     merged = copy.deepcopy(defaults)
     for key, value in overrides.items():
@@ -22,10 +41,28 @@ def _settings_file() -> Path:
     return Path(config.SETTINGS_FILE)
 
 
+def _builtin_template_file() -> Path:
+    return Path(getattr(config, "BUILTIN_CONFIG_TEMPLATE_FILE", _settings_file().with_name("mobile_platform_config.json")))
+
+
+def _load_default_runtime_settings() -> dict:
+    defaults = copy.deepcopy(config.DEFAULT_RUNTIME_SETTINGS)
+    path = _builtin_template_file()
+    if not path.exists():
+        return normalize_runtime_settings(defaults)
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return normalize_runtime_settings(defaults)
+    if not isinstance(loaded, dict):
+        return normalize_runtime_settings(defaults)
+    return normalize_runtime_settings(_deep_merge(defaults, loaded))
+
+
 def load_runtime_settings() -> dict:
     """Load settings from disk and merge them with defaults."""
     path = _settings_file()
-    defaults = copy.deepcopy(config.DEFAULT_RUNTIME_SETTINGS)
+    defaults = _load_default_runtime_settings()
     if not path.exists():
         return defaults
 
@@ -51,6 +88,27 @@ def save_runtime_settings(settings: dict) -> dict:
     return normalized
 
 
+def export_runtime_settings(path: str | Path) -> Path:
+    """Export the complete normalized runtime settings to a JSON file."""
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    settings = load_runtime_settings()
+    target.write_text(
+        json.dumps(settings, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return target
+
+
+def import_runtime_settings(path: str | Path) -> dict:
+    """Import a JSON settings file, normalize it, and persist it as runtime settings."""
+    source = Path(path)
+    loaded = json.loads(source.read_text(encoding="utf-8"))
+    if not isinstance(loaded, dict):
+        raise ValueError("配置文件必须是 JSON 对象")
+    return save_runtime_settings(loaded)
+
+
 def save_runtime_settings_group(group: str, group_settings: dict) -> dict:
     """Persist one top-level settings group without replacing sibling groups."""
     if group not in config.DEFAULT_RUNTIME_SETTINGS:
@@ -62,7 +120,7 @@ def save_runtime_settings_group(group: str, group_settings: dict) -> dict:
 
 def reset_runtime_settings() -> dict:
     """Reset settings to defaults."""
-    defaults = copy.deepcopy(config.DEFAULT_RUNTIME_SETTINGS)
+    defaults = _load_default_runtime_settings()
     return save_runtime_settings(defaults)
 
 
@@ -134,22 +192,9 @@ def normalize_runtime_settings(settings: dict) -> dict:
     traffic["server_password"] = str(traffic.get("server_password") or "")
     traffic["server_connect_timeout"] = int(traffic.get("server_connect_timeout") or 20)
     traffic["server_log_dir"] = str(traffic.get("server_log_dir") or "").strip()
-    traffic["server_downlink_target"] = str(traffic.get("server_downlink_target") or "").strip()
-    traffic["server_downlink_port"] = int(traffic.get("server_downlink_port") or 6011)
-    traffic["server_downlink_bandwidth"] = str(traffic.get("server_downlink_bandwidth") or "250m").strip()
-    traffic["server_downlink_duration"] = int(traffic.get("server_downlink_duration") or 60000)
-    traffic["server_downlink_packet_len"] = int(traffic.get("server_downlink_packet_len") or 1300)
-    traffic["server_uplink_listen_port"] = int(traffic.get("server_uplink_listen_port") or 7011)
-    traffic["server_ping_target"] = str(traffic.get("server_ping_target") or "").strip()
-    traffic["server_ping_count"] = max(int(traffic.get("server_ping_count", 5)), 0)
-    traffic["phone_uplink_target"] = str(traffic.get("phone_uplink_target") or "").strip()
-    traffic["phone_uplink_port"] = int(traffic.get("phone_uplink_port") or 7011)
-    traffic["phone_uplink_bandwidth"] = str(traffic.get("phone_uplink_bandwidth") or "120m").strip()
-    traffic["phone_uplink_duration"] = int(traffic.get("phone_uplink_duration") or 6000)
-    traffic["phone_uplink_packet_len"] = int(traffic.get("phone_uplink_packet_len") or 1350)
-    traffic["phone_downlink_listen_port"] = int(traffic.get("phone_downlink_listen_port") or 6011)
-    traffic["phone_ping_target"] = str(traffic.get("phone_ping_target") or "").strip()
     traffic["device_overrides"] = _normalize_traffic_device_overrides(traffic.get("device_overrides"), traffic)
+    for key in DEVICE_SCOPED_TRAFFIC_KEYS:
+        traffic.pop(key, None)
 
     common = merged["common"]
     common["delay_seconds"] = max(int(common.get("delay_seconds") or 5), 0)
@@ -246,17 +291,19 @@ def _normalize_one_traffic_device_override(raw_values: dict, traffic: dict) -> d
         "server_uplink_listen_port",
         "phone_uplink_port",
         "server_ping_count",
+        "server_downlink_duration",
+        "server_downlink_packet_len",
         "phone_uplink_duration",
         "phone_uplink_packet_len",
     ):
         if key in values and str(values.get(key)).strip() != "":
             normalized[key] = int(values[key])
-    for key in ("phone_uplink_bandwidth", "server_downlink_bandwidth", "server_downlink_duration", "server_downlink_packet_len"):
+    for key in ("phone_uplink_bandwidth", "server_downlink_bandwidth"):
         if key in values:
             default = traffic.get(key) if isinstance(traffic, dict) else ""
             normalized[key] = str(values.get(key) or default or "").strip()
-    if "phone_uplink_target" not in normalized and traffic.get("server_host"):
-        normalized["phone_uplink_target"] = str(traffic.get("server_host") or "").strip()
+    if "phone_uplink_target" not in normalized:
+        normalized["phone_uplink_target"] = config.TRAFFIC_SERVER_PHONE_TARGET
     return normalized
 
 

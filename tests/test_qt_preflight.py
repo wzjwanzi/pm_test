@@ -58,6 +58,36 @@ def test_bidirectional_passes_when_uplink_and_downlink_are_complete():
     assert result.blocking_messages == []
 
 
+def test_traffic_targets_are_checked_after_selected_device_mapping():
+    settings = _settings()
+    settings["traffic"]["server_downlink_target"] = ""
+    settings["traffic"]["phone_uplink_target"] = ""
+    settings["traffic"]["device_overrides"] = {
+        "device-1": {
+            "server_downlink_target": "10.6.251.27",
+            "phone_uplink_target": "192.168.13.164",
+        }
+    }
+    case = _case("双向灌包", ["traffic_server_downlink_start", "phone_uplink_iperf_start"])
+
+    result = evaluate_case_readiness(case, settings, ["device-1"], {"adb_ok": True}, run_mode="single")
+
+    assert result.blocked is False
+
+
+def test_traffic_targets_report_missing_when_final_payload_has_no_ip():
+    settings = _settings()
+    settings["traffic"]["server_downlink_target"] = ""
+    settings["traffic"]["phone_uplink_target"] = ""
+    settings["traffic"]["device_overrides"] = {}
+    case = _case("双向灌包", ["traffic_server_downlink_start", "phone_uplink_iperf_start"])
+
+    result = evaluate_case_readiness(case, settings, ["device-1"], {"adb_ok": True}, run_mode="single")
+
+    assert "下行灌包缺少服务器下行目标 IP" in result.blocking_messages
+    assert "上行灌包缺少手机上行目标 IP" in result.blocking_messages
+
+
 def test_rrc_requires_web_and_ssh_passwords():
     settings = _settings()
     settings["base_web"]["password"] = ""

@@ -32,6 +32,7 @@ class CaseStep:
     enabled: bool = True
     params: dict[str, Any] = field(default_factory=dict)
     required: bool = True
+    param_overrides: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def new(
@@ -50,6 +51,7 @@ class CaseStep:
             enabled=enabled,
             params=dict(params),
             required=required,
+            param_overrides={},
         )
 
     @classmethod
@@ -61,10 +63,11 @@ class CaseStep:
             enabled=bool(data.get("enabled", True)),
             params=dict(data.get("params") or {}),
             required=bool(data.get("required", True)),
+            param_overrides=dict(data.get("param_overrides") or {}),
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        data = {
             "step_id": self.step_id,
             "action": self.action,
             "label": self.label,
@@ -72,6 +75,9 @@ class CaseStep:
             "required": self.required,
             "params": dict(self.params),
         }
+        if self.param_overrides:
+            data["param_overrides"] = dict(self.param_overrides)
+        return data
 
 
 @dataclass(slots=True)

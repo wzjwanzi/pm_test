@@ -1,4 +1,5 @@
 import copy
+import json
 import tkinter as tk
 from types import SimpleNamespace
 
@@ -7,6 +8,8 @@ import pytest
 import config
 from app_settings import (
     build_device_traffic_iperf_command,
+    export_runtime_settings,
+    import_runtime_settings,
     load_runtime_settings,
     normalize_runtime_settings,
     save_runtime_settings,
@@ -64,6 +67,34 @@ def test_settings_file_follows_runtime_data_dir(monkeypatch, tmp_path):
     assert load_runtime_settings()["base_web"]["host"] == "192.168.13.250"
 
 
+def test_export_and_import_runtime_settings_round_trip_normalized_config(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "SETTINGS_FILE", tmp_path / "settings.json")
+    settings = copy.deepcopy(config.DEFAULT_RUNTIME_SETTINGS)
+    settings["traffic"]["server_host"] = "192.168.13.164"
+    serial = "MKBUT20605024486"
+    settings["traffic"]["device_overrides"][serial]["phone_uplink_port"] = 7011
+    settings["traffic"]["device_overrides"][serial]["uplink_port"] = 7011
+    save_runtime_settings(settings)
+
+    export_path = tmp_path / "mobile_platform_config.json"
+    exported = export_runtime_settings(export_path)
+
+    assert exported == export_path
+    assert export_path.exists()
+
+    exported_config = json.loads(export_path.read_text(encoding="utf-8"))
+    exported_config["traffic"]["device_overrides"][serial]["phone_uplink_port"] = "7012"
+    exported_config["traffic"]["device_overrides"][serial]["uplink_port"] = "7012"
+    export_path.write_text(json.dumps(exported_config, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    imported = import_runtime_settings(export_path)
+
+    assert imported["traffic"]["server_host"] == "192.168.13.164"
+    assert "phone_uplink_port" not in imported["traffic"]
+    assert imported["traffic"]["device_overrides"][serial]["phone_uplink_port"] == 7012
+    assert load_runtime_settings()["traffic"]["device_overrides"][serial]["phone_uplink_port"] == 7012
+
+
 def test_extract_business_modules_groups_runtime_settings_by_business_area():
     settings = copy.deepcopy(config.DEFAULT_RUNTIME_SETTINGS)
     settings["base_web"]["password"] = "web-pass"
@@ -71,7 +102,6 @@ def test_extract_business_modules_groups_runtime_settings_by_business_area():
     settings["traffic"]["server_password"] = "server-pass"
     settings["iperf"]["host"] = "10.0.0.9"
     settings["ping"]["host"] = "10.0.0.10"
-    settings["traffic"]["phone_uplink_target"] = "10.0.0.11"
     settings["common"]["delay_seconds"] = 30
 
     modules = extract_business_modules(settings)
@@ -81,7 +111,8 @@ def test_extract_business_modules_groups_runtime_settings_by_business_area():
     assert modules["traffic_server"]["server_password"] == "server-pass"
     assert modules["phone"]["iperf.host"] == "10.0.0.9"
     assert modules["phone"]["ping.host"] == "10.0.0.10"
-    assert modules["phone"]["traffic.phone_uplink_target"] == "10.0.0.11"
+    assert "traffic.phone_uplink_target" not in modules["phone"]
+    assert "MKBUT20605024486" in modules["phone"]["traffic.device_overrides_json"]
     assert modules["common"]["delay_seconds"] == 30
 
 
@@ -159,7 +190,7 @@ def test_base_web_runtime_config_allows_no_fapi_choice():
     assert normalized["base_web"]["capture_transmit_ip"] == ""
 
 
-def test_merge_traffic_server_module_preserves_phone_traffic_fields():
+def test_merge_traffic_server_module_keeps_only_server_connection_fields():
     settings = copy.deepcopy(config.DEFAULT_RUNTIME_SETTINGS)
     settings["traffic"]["phone_uplink_target"] = "10.0.0.11"
     settings["traffic"]["phone_downlink_listen_port"] = 6011
@@ -174,22 +205,15 @@ def test_merge_traffic_server_module_preserves_phone_traffic_fields():
             "server_password": "server-pass",
             "server_connect_timeout": "30",
             "server_log_dir": r"D:\server_logs",
-            "server_downlink_target": "10.6.250.12",
-            "server_downlink_port": "6012",
-            "server_downlink_bandwidth": "300m",
-            "server_downlink_duration": "5000",
-            "server_downlink_packet_len": "1300",
-            "server_uplink_listen_port": "7012",
-            "server_ping_target": "10.6.250.1",
-            "server_ping_count": "0",
         },
     )
+    normalized = normalize_runtime_settings(merged)
 
     assert merged["traffic"]["server_host"] == "10.88.149.210"
-    assert merged["traffic"]["server_downlink_port"] == 6012
-    assert merged["traffic"]["server_ping_count"] == 0
-    assert merged["traffic"]["phone_uplink_target"] == "10.0.0.11"
-    assert merged["traffic"]["phone_downlink_listen_port"] == 6011
+    assert "server_downlink_port" not in normalized["traffic"]
+    assert "server_ping_count" not in normalized["traffic"]
+    assert "phone_uplink_target" not in normalized["traffic"]
+    assert "phone_downlink_listen_port" not in normalized["traffic"]
 
 
 def test_traffic_server_runtime_config_exposes_ping_count_allowing_zero():
@@ -197,10 +221,13 @@ def test_traffic_server_runtime_config_exposes_ping_count_allowing_zero():
     from desktop.settings_forms import MODULE_FIELDS
 
     field_keys = [field.key for field in MODULE_FIELDS["traffic_server"]]
-    normalized = normalize_runtime_settings({"traffic": {"server_ping_count": "0"}})
+    normalized = normalize_runtime_settings(
+        {"traffic": {"device_overrides": {"device-1": {"server_ping_count": "0"}}}}
+    )
 
-    assert "server_ping_count" in field_keys
-    assert normalized["traffic"]["server_ping_count"] == 0
+    assert "server_ping_count" not in field_keys
+    assert "server_ping_count" not in normalized["traffic"]
+    assert normalized["traffic"]["device_overrides"]["device-1"]["server_ping_count"] == 0
 
 
 def test_merge_phone_module_updates_iperf_ping_and_phone_traffic_fields():
@@ -220,24 +247,19 @@ def test_merge_phone_module_updates_iperf_ping_and_phone_traffic_fields():
             "iperf.protocol": "tcp",
             "ping.host": "10.88.149.221",
             "ping.count": "6",
-            "traffic.phone_uplink_target": "10.88.149.222",
-            "traffic.phone_uplink_port": "7013",
-            "traffic.phone_uplink_bandwidth": "110m",
-            "traffic.phone_uplink_duration": "7000",
-            "traffic.phone_uplink_packet_len": "1250",
-            "traffic.phone_downlink_listen_port": "6013",
-            "traffic.phone_ping_target": "10.88.149.223",
             "traffic.device_overrides_json": '{"device-2":{"phone_ip":"10.6.251.28","uplink_port":7012}}',
         },
     )
+    normalized = normalize_runtime_settings(merged)
 
     assert merged["iperf"]["tool"] == "iperf"
     assert merged["iperf"]["port"] == 6088
     assert merged["ping"]["host"] == "10.88.149.221"
     assert merged["ping"]["count"] == 6
-    assert merged["traffic"]["phone_uplink_target"] == "10.88.149.222"
-    assert merged["traffic"]["phone_downlink_listen_port"] == 6013
-    assert merged["traffic"]["device_overrides"]["device-2"]["phone_ip"] == "10.6.251.28"
+    assert "phone_uplink_target" not in normalized["traffic"]
+    assert "phone_downlink_listen_port" not in normalized["traffic"]
+    assert normalized["traffic"]["device_overrides"]["device-2"]["phone_ip"] == "10.6.251.28"
+    assert normalized["traffic"]["device_overrides"]["device-2"]["phone_uplink_port"] == 7012
 
 
 def test_runtime_settings_normalizes_per_device_traffic_overrides():
@@ -259,6 +281,8 @@ def test_runtime_settings_normalizes_per_device_traffic_overrides():
                         "phone_downlink_listen_port": "6012",
                         "server_uplink_listen_port": "7012",
                         "phone_uplink_port": "7012",
+                        "server_downlink_duration": "60000",
+                        "server_downlink_packet_len": "1300",
                     },
                 },
             }
@@ -272,8 +296,11 @@ def test_runtime_settings_normalizes_per_device_traffic_overrides():
     assert overrides["device-1"]["phone_downlink_listen_port"] == 6011
     assert overrides["device-1"]["server_uplink_listen_port"] == 7011
     assert overrides["device-1"]["phone_uplink_port"] == 7011
+    assert overrides["device-1"]["phone_uplink_target"] == "10.88.149.164"
     assert overrides["device-2"]["server_downlink_target"] == "10.6.251.28"
     assert overrides["device-2"]["phone_uplink_port"] == 7012
+    assert overrides["device-2"]["server_downlink_duration"] == 60000
+    assert overrides["device-2"]["server_downlink_packet_len"] == 1300
 
 
 def test_merge_common_module_updates_delay_seconds():

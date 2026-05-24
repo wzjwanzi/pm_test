@@ -9,18 +9,21 @@ def test_build_spec_includes_refactored_packages():
 
     for name in [
         "desktop",
-        "desktop.main",
-        "desktop.widgets.devices",
-        "desktop.widgets.cases",
-        "desktop.widgets.run_monitor",
-        "desktop.widgets.results",
-        "desktop.widgets.settings",
+        "desktop.controller",
+        "desktop.case_templates",
+        "desktop_qt.main_window",
+        "desktop_qt.pages.home",
+        "desktop_qt.pages.case_library",
+        "desktop_qt.pages.settings",
         "pm_tests.core",
         "pm_tests.core.facade",
         "pm_tests.core.orchestrator",
         "pm_tests.core.adapters",
     ]:
         assert repr(name) in text
+    assert "desktop.main" not in text
+    assert "desktop.widgets" not in text
+    assert "tkinter" not in text.lower()
 
 
 def test_engineering_files_exist_and_cover_expected_commands():
@@ -36,7 +39,7 @@ def test_engineering_files_exist_and_cover_expected_commands():
     assert "-r requirements.txt" in dev_requirements
     assert "pytest" in dev_requirements
     assert "python -m pytest -v" in verify_dev
-    assert "desktop_app._prepare_frozen_gui_environment()" in verify_dev
+    assert "desktop_qt.main_window" in verify_dev
     assert "MobileTestPlatform.exe" in verify_package
     assert "requirements-dev.txt" in docs
     assert "verify_dev.ps1" in docs

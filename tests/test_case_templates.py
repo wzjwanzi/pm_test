@@ -173,6 +173,12 @@ def test_base_station_ip_does_not_drive_traffic_server_ip():
     assert traffic_step.params["server_host"] != ssh_step.params["ssh_host"]
 
 
+def test_traffic_server_default_ssh_host_is_runtime_server_ip():
+    step = step_from_template("traffic_server_downlink_start", {})
+
+    assert step.params["server_host"] == "192.168.13.164"
+
+
 def test_traffic_ping_steps_do_not_include_iperf_bandwidth_parameters():
     step = step_from_template("traffic_server_down_ping_start", {"traffic_server_host": "10.88.149.164"})
 
@@ -180,6 +186,12 @@ def test_traffic_ping_steps_do_not_include_iperf_bandwidth_parameters():
     assert "iperf_bandwidth" not in step.params
     assert "iperf_duration" not in step.params
     assert "iperf_port" not in step.params
+
+
+def test_phone_uplink_stop_has_no_iperf_parameters():
+    step = step_from_template("phone_uplink_iperf_stop", {})
+
+    assert step.params == {}
 
 
 def test_phone_airplane_steps_have_expected_runtime_parameters():
@@ -515,12 +527,14 @@ def test_remap_case_params_from_settings_updates_current_case_template_fields_on
 
     changed = remap_case_params_from_settings(case, new_settings)
 
-    assert changed == 9
+    assert changed == 11
     assert case.steps[0].params["server_host"] == "10.88.149.200"
     assert case.steps[0].params["server_user"] == "new-user"
     assert case.steps[0].params["server_password"] == "new-pass"
     assert case.steps[0].params["iperf_bandwidth"] == "250M"
     assert case.steps[0].params["iperf_duration"] == 120
+    assert case.steps[0].params["server_downlink_bandwidth"] == "250M"
+    assert case.steps[0].params["server_downlink_duration"] == 120
     assert "-t 120 -b 250M" in case.steps[0].params["command"]
     assert case.steps[0].params["custom_note"] == "keep me"
     assert case.steps[1].params["web_host"] == "192.168.13.250"

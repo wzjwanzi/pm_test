@@ -21,12 +21,12 @@ class FakeController:
         return []
 
 
-def test_main_window_has_five_navigation_entries():
+def test_main_window_has_base_station_config_navigation_entry():
     QApplication.instance() or QApplication([])
     window = MainWindow(controller=FakeController(), start_polling=False)
 
     labels = [window.nav_list.item(index).text() for index in range(window.nav_list.count())]
 
-    assert labels == ["首页运行", "用例库", "运行配置", "结果日志", "设备管理"]
+    assert labels == ["首页运行", "用例库", "基站配置", "设备管理", "运行配置", "结果日志"]
     assert window.stack.currentWidget() is window.home_page
     window.close()

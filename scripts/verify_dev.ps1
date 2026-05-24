@@ -9,31 +9,30 @@ Write-Host "== py_compile =="
 python -m py_compile `
   app.py `
   desktop_app.py `
-  desktop/main.py `
   desktop/controller.py `
   desktop/state.py `
   desktop/formatters.py `
-  desktop/widgets/devices.py `
-  desktop/widgets/cases.py `
-  desktop/widgets/run_monitor.py `
-  desktop/widgets/results.py `
-  desktop/widgets/settings.py `
+  desktop_qt/app.py `
+  desktop_qt/main_window.py `
+  desktop_qt/pages/home.py `
+  desktop_qt/pages/case_library.py `
+  desktop_qt/pages/settings.py `
+  desktop_qt/pages/results.py `
+  desktop_qt/pages/devices.py `
   pm_tests/core/models.py `
   pm_tests/core/facade.py
 
 Write-Host "== flask smoke =="
 python -c "from app import app; c=app.test_client(); r=c.get('/api/pm/templates'); print(r.status_code); print(r.get_json()['success'])"
 
-Write-Host "== tk smoke =="
+Write-Host "== qt smoke =="
 @'
-import desktop_app
-desktop_app._prepare_frozen_gui_environment()
-desktop_app._import_tk_modules()
-tk = desktop_app.tk
-root = tk.Tk()
-root.withdraw()
-app = desktop_app.DesktopApp(root, start_polling=False)
-root.update_idletasks()
-print("panels=", all(hasattr(app, name) for name in ["devices_panel", "cases_panel", "run_monitor_panel", "results_panel", "settings_panel"]))
-root.destroy()
+import os
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+from PySide6.QtWidgets import QApplication
+from desktop_qt.main_window import MainWindow
+app = QApplication.instance() or QApplication([])
+window = MainWindow(start_polling=False)
+print("pages=", window.stack.count())
+window.close()
 '@ | python -

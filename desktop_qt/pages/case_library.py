@@ -4,9 +4,14 @@ from typing import Any
 
 from PySide6.QtWidgets import QFormLayout, QLineEdit, QListWidget, QPushButton, QHBoxLayout, QVBoxLayout, QWidget
 
-import config
 from desktop.case_models import CaseStep, SavedCase
-from desktop.case_templates import ACTION_BY_ID, step_from_template
+from desktop.case_templates import ACTION_BY_ID
+from desktop.case_operations import (
+    apply_operation_defaults,
+    create_step_from_action,
+    resolve_step_params,
+    update_step_parameters,
+)
 
 
 class CaseLibraryPage(QWidget):
@@ -111,19 +116,22 @@ class CaseLibraryPage(QWidget):
             return
         step = case.steps[row]
         operation = _operation_for_action(self.operations, step.action)
-        fields = (operation or {}).get("fields") or _fields_from_params(step.params)
+        params = resolve_step_params(step, self.window.controller.load_settings())
+        fields = (operation or {}).get("fields") or _fields_from_params(params)
         self._selected_operation = operation
         self._editing_step_index = row
-        self._render_parameters(fields, step.params)
+        self._render_parameters(fields, params)
 
     def add_operation_to_case(self) -> None:
         case = self.selected_case()
         operation = self.selected_operation()
         if case is None or operation is None:
             return
-        step = _step_from_operation(operation, self.window.controller.load_settings())
-        step.params.update(self.collect_parameter_values())
-        _refresh_generated_command(step)
+        step = _step_from_operation(
+            operation,
+            self.window.controller.load_settings(),
+            self.collect_parameter_values(),
+        )
         case.steps.append(step)
         self._save_case_if_supported(case)
         self.render_selected_case()
@@ -132,15 +140,28 @@ class CaseLibraryPage(QWidget):
     def save_selected_step_parameters(self) -> None:
         case = self.selected_case()
         if case is None or self._editing_step_index is None:
+            self.save_selected_operation_defaults()
             return
         if not (0 <= self._editing_step_index < len(case.steps)):
             return
         step = case.steps[self._editing_step_index]
-        step.params.update(self.collect_parameter_values())
-        _refresh_generated_command(step)
+        update_step_parameters(step, self.collect_parameter_values(), self.window.controller.load_settings())
         self._save_case_if_supported(case)
         self.render_selected_case()
         self.step_list.setCurrentRow(self._editing_step_index)
+
+    def save_selected_operation_defaults(self) -> None:
+        operation = self.selected_operation()
+        if operation is None or not hasattr(self.window.controller, "save_settings"):
+            return
+        settings = self.window.controller.load_settings()
+        updated = apply_operation_defaults(
+            str(operation.get("action") or ""),
+            self.collect_parameter_values(),
+            settings,
+        )
+        self.window.controller.save_settings(updated)
+        self.render_selected_operation()
 
     def delete_selected_step(self) -> None:
         case = self.selected_case()
@@ -228,6 +249,23 @@ class CaseLibraryPage(QWidget):
     def _save_case_if_supported(self, case: SavedCase) -> None:
         if hasattr(self.window.controller, "save_case"):
             self.window.controller.save_case(case)
+        self._sync_home_case(case)
+
+    def _sync_home_case(self, case: SavedCase) -> None:
+        if not hasattr(self.window, "home_page"):
+            return
+        home_page = self.window.home_page
+        for index, existing in enumerate(getattr(home_page, "cases", [])):
+            same_id = getattr(existing, "case_id", None) == getattr(case, "case_id", None)
+            same_name = getattr(existing, "name", None) == getattr(case, "name", None)
+            if same_id or same_name:
+                home_page.cases[index] = case
+                if home_page.case_list.item(index) is not None:
+                    home_page.case_list.item(index).setText(case.name)
+                if home_page.case_list.currentRow() == index:
+                    self.window.state.selected_case = case
+                    home_page.refresh_readiness()
+                return
 
 
 def _case_from_template(template: Any):
@@ -254,10 +292,14 @@ def _operation_for_action(operations: list[dict[str, Any]], action: str) -> dict
     return None
 
 
-def _step_from_operation(operation: dict[str, Any], settings: dict[str, Any]) -> CaseStep:
+def _step_from_operation(
+    operation: dict[str, Any],
+    settings: dict[str, Any],
+    values: dict[str, Any] | None = None,
+) -> CaseStep:
     action = str(operation.get("action") or "")
     if action in ACTION_BY_ID:
-        return step_from_template(action, settings)
+        return create_step_from_action(action, settings, values)
     params = dict(operation.get("defaults") or {})
     return CaseStep.new(action, f"{operation.get('group')}-{operation.get('label')}", params)
 
@@ -272,28 +314,3 @@ def _coerce_value(value: str, field_type: Any) -> Any:
     if field_type == "bool":
         return value.strip().lower() not in {"0", "false", "no", "off", "否"}
     return value
-
-
-def _refresh_generated_command(step: CaseStep) -> None:
-    if step.action == "traffic_server_downlink_start":
-        target = step.params.get("server_downlink_target") or ""
-        duration = int(step.params.get("server_downlink_duration") or step.params.get("iperf_duration") or 60000)
-        bandwidth = step.params.get("server_downlink_bandwidth") or step.params.get("iperf_bandwidth") or "250m"
-        packet_len = int(step.params.get("server_downlink_packet_len") or 1300)
-        port = int(step.params.get("server_downlink_port") or step.params.get("iperf_port") or 6011)
-        step.params["command"] = f"iperf -u -c {target} -i 1 -t {duration} -b {bandwidth} -l {packet_len} -p {port} -P 1"
-    elif step.action == "traffic_server_uplink_receive_start":
-        port = int(step.params.get("server_uplink_listen_port") or step.params.get("iperf_port") or 7011)
-        step.params["command"] = f"iperf -u -s -i 1 -p {port}"
-    elif step.action == "phone_downlink_receive_start":
-        port = int(step.params.get("phone_downlink_listen_port") or step.params.get("iperf_port") or 6011)
-        step.params["arguments"] = f"-u -s -i 1 -p {port}"
-        step.params["command"] = f"adb shell {config.DEVICE_IPERF_BINARY} {step.params['arguments']}"
-    elif step.action == "phone_uplink_iperf_start":
-        target = step.params.get("phone_uplink_target") or ""
-        duration = int(step.params.get("phone_uplink_duration") or step.params.get("iperf_duration") or 6000)
-        bandwidth = step.params.get("phone_uplink_bandwidth") or step.params.get("iperf_bandwidth") or "120m"
-        packet_len = int(step.params.get("phone_uplink_packet_len") or 1350)
-        port = int(step.params.get("phone_uplink_port") or step.params.get("iperf_port") or 7011)
-        step.params["arguments"] = f"-u -c {target} -i 1 -t {duration} -b {bandwidth} -l {packet_len} -p {port} -P 1"
-        step.params["command"] = f"adb shell {config.DEVICE_IPERF_BINARY} {step.params['arguments']}"

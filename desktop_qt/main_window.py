@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QHBoxLayout, QListWidget, QMainWindow, QStackedWid
 
 from desktop.controller import DesktopController
 from desktop_qt.pages.case_library import CaseLibraryPage
+from desktop_qt.pages.base_station_config import BaseStationConfigPage
 from desktop_qt.pages.devices import DevicesPage
 from desktop_qt.pages.home import HomePage
 from desktop_qt.pages.results import ResultsPage
@@ -24,9 +25,10 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.home_page = HomePage(self)
         self.case_library_page = CaseLibraryPage(self)
+        self.base_station_config_page = BaseStationConfigPage(self)
+        self.devices_page = DevicesPage(self)
         self.settings_page = SettingsPage(self)
         self.results_page = ResultsPage(self)
-        self.devices_page = DevicesPage(self)
 
         self._build_layout()
         self.poll_timer = QTimer(self)
@@ -44,9 +46,10 @@ class MainWindow(QMainWindow):
         pages = [
             ("首页运行", self.home_page),
             ("用例库", self.case_library_page),
+            ("基站配置", self.base_station_config_page),
+            ("设备管理", self.devices_page),
             ("运行配置", self.settings_page),
             ("结果日志", self.results_page),
-            ("设备管理", self.devices_page),
         ]
         for label, page in pages:
             self.nav_list.addItem(label)

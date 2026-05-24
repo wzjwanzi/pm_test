@@ -1,25 +1,25 @@
-import tkinter as tk
+import os
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from PySide6.QtWidgets import QApplication
+
+from desktop_qt.main_window import MainWindow
 
 
-def test_desktop_ui_preview_builds_three_column_workbench():
-    import desktop_app
+def test_qt_desktop_preview_builds_current_workbench_pages():
+    QApplication.instance() or QApplication([])
+    window = MainWindow(start_polling=False)
 
-    desktop_app._prepare_local_tk_environment()
-
-    from desktop.ui_preview import DesktopWorkbenchPreview
-
-    root = tk.Tk()
-    root.withdraw()
     try:
-        preview = DesktopWorkbenchPreview(root)
-        root.update_idletasks()
+        labels = [window.nav_list.item(index).text() for index in range(window.nav_list.count())]
 
-        assert hasattr(preview, "toolbar")
-        assert hasattr(preview, "case_tree")
-        assert hasattr(preview, "station_table")
-        assert hasattr(preview, "realtime_log")
-        assert hasattr(preview, "step_table")
-        assert hasattr(preview, "case_summary")
-        assert hasattr(preview, "parameter_table")
+        assert labels == ["首页运行", "用例库", "基站配置", "设备管理", "运行配置", "结果日志"]
+        assert window.stack.count() == 6
+        assert hasattr(window, "home_page")
+        assert hasattr(window, "case_library_page")
+        assert hasattr(window, "base_station_config_page")
+        assert hasattr(window, "devices_page")
+        assert hasattr(window, "settings_page")
     finally:
-        root.destroy()
+        window.close()

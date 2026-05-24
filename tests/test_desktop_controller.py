@@ -1,6 +1,7 @@
 from desktop.controller import DesktopController
 from desktop.case_library import CaseLibrary
 from desktop.case_models import CaseStep, SavedCase
+from desktop.case_templates import build_default_case_templates
 from desktop.state import CaseDraft
 import config
 
@@ -83,6 +84,52 @@ def test_controller_uses_saved_cases_as_templates(tmp_path):
     assert len(controller.list_saved_cases()) == 2
 
 
+def test_controller_upgrades_saved_builtin_case_to_latest_template_steps(tmp_path):
+    library = CaseLibrary(tmp_path)
+    settings = {"common": {"delay_seconds": 5}}
+    full_case = next(item for item in build_default_case_templates(settings) if item.name == "双向灌包")
+    stale_case = SavedCase.new("双向灌包", full_case.steps[:8])
+    stale_case.steps[2].params["delay_seconds"] = 90
+    stale_case.steps[2].param_overrides = {"delay_seconds": 90}
+    library.save(stale_case)
+    controller = DesktopController(
+        device_manager=FakeDeviceManager(),
+        pm_manager=FakePmManager(),
+        case_library=library,
+    )
+    controller.load_settings = lambda: settings
+
+    templates = controller.get_templates()
+    bidirectional = next(SavedCase.from_dict(item) for item in templates if item["name"] == "双向灌包")
+
+    assert len(bidirectional.steps) == len(full_case.steps)
+    assert [step.action for step in bidirectional.steps] == [step.action for step in full_case.steps]
+    assert bidirectional.steps[2].params["delay_seconds"] == 90
+    assert bidirectional.steps[2].param_overrides == {"delay_seconds": 90}
+
+
+def test_controller_save_case_upgrades_builtin_case_before_persisting(tmp_path):
+    library = CaseLibrary(tmp_path)
+    settings = {"common": {"delay_seconds": 5}}
+    full_case = next(item for item in build_default_case_templates(settings) if item.name == "双向灌包")
+    stale_case = SavedCase.new("双向灌包", full_case.steps[:8])
+    stale_case.steps[2].params["delay_seconds"] = 90
+    stale_case.steps[2].param_overrides = {"delay_seconds": 90}
+    controller = DesktopController(
+        device_manager=FakeDeviceManager(),
+        pm_manager=FakePmManager(),
+        case_library=library,
+    )
+    controller.load_settings = lambda: settings
+
+    controller.save_case(stale_case)
+    saved = library.load(stale_case.case_id)
+
+    assert len(saved.steps) == len(full_case.steps)
+    assert [step.action for step in saved.steps] == [step.action for step in full_case.steps]
+    assert saved.steps[2].params["delay_seconds"] == 90
+
+
 def test_controller_create_run_passes_saved_case_steps_as_dicts():
     pm = FakePmManager()
     controller = DesktopController(device_manager=FakeDeviceManager(), pm_manager=pm)
@@ -90,6 +137,7 @@ def test_controller_create_run_passes_saved_case_steps_as_dicts():
         "saved",
         [CaseStep.new("base_web_capture_start", "capture", {"capture_fapi_interface": "FAPI1"})],
     )
+    saved_case.steps[0].param_overrides["capture_fapi_interface"] = "FAPI1"
 
     result = controller.create_run("device-1", [saved_case])
 

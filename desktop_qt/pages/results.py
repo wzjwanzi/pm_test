@@ -19,16 +19,23 @@ class ResultsPage(QWidget):
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.artifact_list = QListWidget()
-        layout.addWidget(self.run_list)
-        layout.addWidget(self.step_list)
-        layout.addWidget(self.filter_combo)
-        layout.addWidget(self.log_text)
-        layout.addWidget(self.artifact_list)
+        layout.addWidget(self.run_list, 1)
+        layout.addWidget(self.step_list, 1)
+        layout.addWidget(self.filter_combo, 0)
+        layout.addWidget(self.log_text, 5)
+        layout.addWidget(self.artifact_list, 1)
 
     def render_run(self, run: dict[str, Any] | None) -> None:
+        scrollbar = self.log_text.verticalScrollBar()
+        was_at_bottom = scrollbar.value() >= scrollbar.maximum()
+        previous_value = scrollbar.value()
         self.step_list.clear()
         self.artifact_list.clear()
         self.log_text.setPlainText(format_run_console(run))
+        if was_at_bottom:
+            scrollbar.setValue(scrollbar.maximum())
+        else:
+            scrollbar.setValue(min(previous_value, scrollbar.maximum()))
         for case in (run or {}).get("case_records") or []:
             for step in case.get("step_records") or []:
                 self.step_list.addItem(str(step.get("step_id") or step.get("kind") or "-"))

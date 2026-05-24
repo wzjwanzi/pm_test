@@ -2,6 +2,11 @@ import os
 from pathlib import Path
 import tkinter as tk
 
+import pytest
+
+pytestmark = pytest.mark.skip(reason="旧 Tkinter 桌面 UI 已退役；发布包只保留 Qt 新 UI")
+
+import config
 from desktop.case_library import CaseLibrary
 from desktop.case_models import CaseStep, SavedCase
 from desktop.controller import DesktopController
@@ -65,6 +70,7 @@ def _build_app(tmp_path=None):
         "pm_manager": FakePmManager(),
     }
     if tmp_path is not None:
+        config.SETTINGS_FILE = tmp_path / "settings.json"
         controller_kwargs["case_library"] = CaseLibrary(tmp_path)
     controller = DesktopController(**controller_kwargs)
     app = DesktopApp(root, controller=controller, start_polling=False)
@@ -81,6 +87,7 @@ def _build_multi_device_app(tmp_path=None):
         "pm_manager": FakePmManager(),
     }
     if tmp_path is not None:
+        config.SETTINGS_FILE = tmp_path / "settings.json"
         controller_kwargs["case_library"] = CaseLibrary(tmp_path)
     controller = DesktopController(**controller_kwargs)
     app = DesktopApp(root, controller=controller, start_polling=False)

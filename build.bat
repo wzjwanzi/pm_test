@@ -48,7 +48,6 @@ echo.
 echo [5/5] Copying runtime config and docs...
 if not exist release mkdir release
 if exist settings.json copy /Y settings.json release\MobileTestPlatform\settings.json >nul
-if exist cases xcopy /E /I /Y cases release\MobileTestPlatform\cases >nul
 copy /Y README.md release\ >nul
 copy /Y USAGE.md release\ >nul
 copy /Y 5G_TESTING_GUIDE.md release\ >nul

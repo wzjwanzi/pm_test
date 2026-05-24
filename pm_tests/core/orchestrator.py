@@ -65,6 +65,10 @@ class CaseExecutor:
                 self._append_execution_log(execution_log, f"case_stopped case={case_plan.name}")
                 break
             step = self._with_case_output_dir(step, case_dir)
+            running_record = self._running_step_record(step)
+            record.step_records.append(running_record)
+            if on_update:
+                on_update(record)
             self._append_execution_log(
                 execution_log,
                 (
@@ -74,7 +78,7 @@ class CaseExecutor:
             )
             step_record = self.step_runner.run(step)
             externalize_large_step_payloads(step_record, case_dir)
-            record.step_records.append(step_record)
+            record.step_records[-1] = step_record
             if on_update:
                 on_update(record)
             self._append_execution_log(
@@ -111,6 +115,23 @@ class CaseExecutor:
         if on_update:
             on_update(record)
         return record
+
+    def _running_step_record(self, step) -> StepRecord:
+        data = {"operation": step.action or step.kind}
+        if step.label:
+            data["label"] = step.label
+        for key in ("command", "commands", "arguments"):
+            if step.parameters.get(key):
+                data[key] = step.parameters.get(key)
+        return StepRecord(
+            step_id=step.step_id,
+            kind=step.kind,
+            adapter=step.adapter,
+            status=Status.RUNNING,
+            started_at=utc_now_iso(),
+            message="running",
+            data=data,
+        )
 
     def _with_case_output_dir(self, step, case_dir: Path):
         params = dict(step.parameters or {})

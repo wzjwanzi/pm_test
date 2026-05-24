@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
     QGroupBox,
     QLabel,
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from desktop.case_models import SavedCase
+from desktop.case_operations import apply_device_overrides_to_payload
 from desktop.formatters import format_run_console
 from desktop_qt.preflight import Severity, evaluate_case_readiness
 
@@ -28,11 +30,16 @@ class HomePage(QWidget):
         layout = QVBoxLayout(self)
         self.device_group = QGroupBox("当前设备")
         self.device_list = QListWidget()
+        self.device_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.run_mode_combo = QComboBox()
         self.run_mode_combo.addItems(["单手机", "双手机"])
+        self.run_mode_hint = QLabel("单手机：只运行当前选中的一台设备；双手机：对选中的多台设备分别创建运行任务。")
+        self.device_selection_hint = QLabel("")
         device_layout = QVBoxLayout(self.device_group)
         device_layout.addWidget(self.device_list)
         device_layout.addWidget(self.run_mode_combo)
+        device_layout.addWidget(self.run_mode_hint)
+        device_layout.addWidget(self.device_selection_hint)
 
         self.case_group = QGroupBox("选择用例")
         self.case_list = QListWidget()
@@ -61,7 +68,7 @@ class HomePage(QWidget):
 
         self.device_list.itemSelectionChanged.connect(self._on_device_selection_changed)
         self.case_list.currentRowChanged.connect(lambda _row: self.refresh_readiness())
-        self.run_mode_combo.currentIndexChanged.connect(lambda _index: self.refresh_readiness())
+        self.run_mode_combo.currentIndexChanged.connect(lambda _index: self._on_run_mode_changed())
         self.preflight_button.clicked.connect(self.refresh_readiness)
         self.start_button.clicked.connect(self.start_run)
 
@@ -76,6 +83,7 @@ class HomePage(QWidget):
         if self.devices:
             self.device_list.setCurrentRow(0)
             self.window.state.selected_devices = [self.devices[0]]
+        self._update_selection_hint()
 
     def load_cases(self) -> None:
         self.cases = [_case_from_template(item) for item in self.window.controller.get_templates()]
@@ -87,6 +95,7 @@ class HomePage(QWidget):
             self.window.state.selected_case = self.cases[0]
 
     def refresh_readiness(self) -> None:
+        self._update_selection_hint()
         case = self.selected_case()
         if case is not None:
             self.window.state.selected_case = case
@@ -97,7 +106,7 @@ class HomePage(QWidget):
             for item in group.items:
                 prefix = _severity_text(item.severity)
                 self.readiness_list.addItem(f"  {prefix} {item.label}: {item.message}")
-        self.message_label.setText("；".join(result.blocking_messages))
+        self.message_label.setText("; ".join(result.blocking_messages))
 
     def start_run(self) -> None:
         case = self.selected_case()
@@ -106,20 +115,38 @@ class HomePage(QWidget):
             return
         result = self._readiness()
         if result.blocked:
-            self.message_label.setText("；".join(result.blocking_messages))
+            self.message_label.setText("; ".join(result.blocking_messages))
             return
 
         device_ids = self.selected_devices()
-        payload = self.window.controller.case_to_run_payload(case)
-        run_result = self.window.controller.create_run(device_ids[0], [payload])
-        run = run_result.get("run", {}) if isinstance(run_result, dict) else {}
-        self.window.state.selected_run_id = str(run.get("run_id") or "")
-        self.live_output.append(f"开始运行: {self.window.state.selected_run_id}")
+        settings = self.window.controller.load_settings()
+        run_ids = []
+        for device_id in device_ids:
+            payload = apply_device_overrides_to_payload(
+                self.window.controller.case_to_run_payload(case),
+                settings,
+                device_id,
+            )
+            run_result = self.window.controller.create_run(device_id, [payload])
+            run = run_result.get("run", {}) if isinstance(run_result, dict) else {}
+            run_id = str(run.get("run_id") or "")
+            if run_id:
+                run_ids.append(run_id)
+        self.window.state.selected_run_ids = run_ids
+        self.window.state.selected_run_id = run_ids[-1] if run_ids else ""
+        self.live_output.append(f"开始运行: {', '.join(run_ids)}")
 
     def render_run(self, run: dict[str, Any] | None) -> None:
         if not run:
             return
+        scrollbar = self.live_output.verticalScrollBar()
+        was_at_bottom = scrollbar.value() >= scrollbar.maximum()
+        previous_value = scrollbar.value()
         self.live_output.setPlainText(format_run_console(run))
+        if was_at_bottom:
+            scrollbar.setValue(scrollbar.maximum())
+        else:
+            scrollbar.setValue(min(previous_value, scrollbar.maximum()))
 
     def selected_case(self):
         row = self.case_list.currentRow()
@@ -128,6 +155,11 @@ class HomePage(QWidget):
         return None
 
     def selected_devices(self) -> list[str]:
+        if not self._is_dual_mode():
+            current = self.device_list.currentItem()
+            if current is not None:
+                return [current.text()]
+            return [self.devices[0]] if self.devices else []
         selected = [item.text() for item in self.device_list.selectedItems()]
         if not selected and self.devices:
             selected = [self.devices[0]]
@@ -137,14 +169,34 @@ class HomePage(QWidget):
         self.window.state.selected_devices = self.selected_devices()
         self.refresh_readiness()
 
+    def _on_run_mode_changed(self) -> None:
+        if self._is_dual_mode():
+            self.device_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        else:
+            self.device_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.window.state.selected_devices = self.selected_devices()
+        self.refresh_readiness()
+
     def _readiness(self):
         return evaluate_case_readiness(
             self.selected_case(),
             self.window.controller.load_settings(),
             self.selected_devices(),
             self.window.state.preflight,
-            run_mode="dual" if self.run_mode_combo.currentText() == "双手机" else "single",
+            run_mode="dual" if self._is_dual_mode() else "single",
         )
+
+    def _is_dual_mode(self) -> bool:
+        return self.run_mode_combo.currentIndex() == 1
+
+    def _update_selection_hint(self) -> None:
+        selected_count = len([item for item in self.device_list.selectedItems()])
+        if self._is_dual_mode():
+            self.device_selection_hint.setText(
+                f"双手机模式：按住 Ctrl 可多选设备，至少选择两台设备；当前已选择 {selected_count} 台。"
+            )
+        else:
+            self.device_selection_hint.setText("单手机模式：点击一个设备序号即可运行该设备；双手机模式可按住 Ctrl 多选设备。")
 
 
 def _case_from_template(template: Any):

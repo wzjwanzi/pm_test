@@ -51,7 +51,7 @@ def format_run_console(run: dict[str, Any] | None) -> str:
         return "No run selected"
 
     cases = _console_cases(run)
-    total_steps = sum(len(case.get("step_records") or []) for case in cases)
+    total_steps = sum(_case_total_steps(case) for case in cases)
     if total_steps == 0:
         return f"{format_run_summary(run)}\n\nNo step records."
 
@@ -114,6 +114,13 @@ def format_run_console(run: dict[str, Any] | None) -> str:
             lines.append("")
 
     return "\n".join(lines).rstrip()
+
+
+def _case_total_steps(case: dict[str, Any]) -> int:
+    recorded = len(case.get("step_records") or [])
+    metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
+    planned = len(metadata.get("steps") or [])
+    return max(recorded, planned)
 
 
 def extract_step_rows(run: dict[str, Any] | None) -> list[dict[str, str]]:

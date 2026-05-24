@@ -130,7 +130,7 @@ def _base_defaults(settings: dict[str, Any]) -> dict[str, Any]:
     ssh = dict(settings.get("ssh") or {})
     traffic = dict(settings.get("traffic") or {})
     common = dict(settings.get("common") or {})
-    server_host = traffic.get("server_host") or settings.get("traffic_server_host") or "10.88.149.164"
+    server_host = traffic.get("server_host") or settings.get("traffic_server_host") or "192.168.13.164"
     return {
         "web_host": base_web.get("host") or settings.get("web_host") or settings.get("base_host") or "192.168.13.236",
         "web_port": int(base_web.get("port") or settings.get("web_port") or 8400),
@@ -305,7 +305,7 @@ ACTIONS = [
     ActionTemplate("phone_downlink_receive_start", "开始下行接收", "手机", PHONE_RECEIVE_FIELDS),
     ActionTemplate("phone_downlink_receive_stop", "停止下行接收", "手机", PHONE_RECEIVE_FIELDS),
     ActionTemplate("phone_uplink_iperf_start", "开始上行灌包", "手机", PHONE_IPERF_FIELDS),
-    ActionTemplate("phone_uplink_iperf_stop", "停止上行灌包", "手机", PHONE_IPERF_FIELDS),
+    ActionTemplate("phone_uplink_iperf_stop", "停止上行灌包", "手机", []),
     ActionTemplate("phone_ping", "手机 ping", "手机", PHONE_PING_FIELDS),
     ActionTemplate("phone_airplane_mode_off", "关闭飞行模式入网", "手机", PHONE_AIRPLANE_FIELDS),
     ActionTemplate("phone_airplane_mode_on", "开启飞行模式脱网", "手机", PHONE_AIRPLANE_FIELDS),
@@ -326,6 +326,11 @@ def step_from_template(action: str, settings: dict[str, Any]) -> CaseStep:
     }
     params.update(dict(template.defaults))
     if action == "traffic_server_downlink_start":
+        params["server_downlink_target"] = runtime_defaults["server_downlink_target"]
+        params["server_downlink_port"] = runtime_defaults["server_downlink_port"]
+        params["server_downlink_bandwidth"] = runtime_defaults["server_downlink_bandwidth"]
+        params["server_downlink_duration"] = runtime_defaults["server_downlink_duration"]
+        params["server_downlink_packet_len"] = runtime_defaults["server_downlink_packet_len"]
         params["command"] = _server_downlink_command(runtime_defaults)
     elif action == "traffic_server_uplink_receive_start":
         params["command"] = _server_uplink_receive_command(runtime_defaults)
@@ -333,6 +338,14 @@ def step_from_template(action: str, settings: dict[str, Any]) -> CaseStep:
         params["arguments"] = _phone_downlink_receive_arguments(runtime_defaults)
         params["command"] = _phone_command(params["arguments"])
     elif action == "phone_uplink_iperf_start":
+        params["phone_uplink_target"] = runtime_defaults["phone_uplink_target"]
+        params["phone_uplink_port"] = runtime_defaults["phone_uplink_port"]
+        params["phone_uplink_bandwidth"] = runtime_defaults["phone_uplink_bandwidth"]
+        params["phone_uplink_duration"] = runtime_defaults["phone_uplink_duration"]
+        params["phone_uplink_packet_len"] = runtime_defaults["phone_uplink_packet_len"]
+        params["iperf_port"] = runtime_defaults["phone_uplink_port"]
+        params["iperf_bandwidth"] = runtime_defaults["phone_uplink_bandwidth"]
+        params["iperf_duration"] = runtime_defaults["phone_uplink_duration"]
         params["arguments"] = _phone_uplink_arguments(runtime_defaults)
         params["command"] = _phone_command(params["arguments"])
     elif action in {"base_ssh_rlc_up_log_start", "base_ssh_rate_log_start", "base_ssh_cpu_log_start"}:
